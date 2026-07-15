@@ -1,8 +1,24 @@
 {
   "name": "@mattthehat/astro-cms",
   "version": "0.1.0",
+  "description": "Config-driven admin CMS for Astro: one resource config renders a full list/create/edit/view/delete screen with search, filters, sorting and pagination, DB-agnostic via a small adapter interface.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattthehat/astro-cms.git",
+    "directory": "packages/astro-cms"
+  },
+  "homepage": "https://github.com/mattthehat/astro-cms#readme",
+  "bugs": "https://github.com/mattthehat/astro-cms/issues",
+  "keywords": [
+    "astro",
+    "astro-component",
+    "cms",
+    "admin",
+    "crud",
+    "withastro"
+  ],
   "sideEffects": [
     "*.css"
   ],
