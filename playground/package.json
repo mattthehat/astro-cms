@@ -1,0 +1,15 @@
+{
+  "name": "playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build"
+  },
+  "dependencies": {
+    "@astrojs/node": "^10.1.4",
+    "@mattthehat/astro-cms": "workspace:*",
+    "@mattthehat/astro-forms": "^0.1.0",
+    "astro": "^6.4.5"
+  }
+}

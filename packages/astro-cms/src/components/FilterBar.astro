@@ -1,0 +1,122 @@
+---
+import Icon from './icons/Icon.astro';
+import type { CmsFilters } from '../filters';
+import { hasActiveFilters } from '../filters';
+
+type Props = {
+  filters?: CmsFilters;
+  showSearch?: boolean;
+  searchColumns?: string[];
+  params: URLSearchParams;
+  basePath: string;
+};
+
+const { filters = [], showSearch = false, searchColumns = [], params, basePath } = Astro.props;
+const val = (k: string) => params.get(k) ?? '';
+
+// Active filter count (excludes the search box) drives the toggle badge and
+// whether the panel starts open
+const filterCount = filters.filter((f) =>
+  f.type === 'dateRange' ? params.get(`${f.key}_from`) || params.get(`${f.key}_to`) : params.get(f.key)
+).length;
+const panelOpen = filterCount > 0;
+const anyActive = hasActiveFilters(params, searchColumns, filters);
+const hasFilters = filters.length > 0;
+---
+
+<form class="ac-toolbar" method="get" action={basePath} role="search">
+  <div class="ac-toolbar__bar">
+    {showSearch ? (
+      <div class="ac-toolbar__search">
+        <Icon name="search" size={16} aria-hidden="true" />
+        <input
+          type="search"
+          name="q"
+          value={val('q')}
+          placeholder="Search…"
+          class="ac-toolbar__search-input"
+          aria-label="Search"
+        />
+        <button type="submit" class="ac-toolbar__search-btn">Search</button>
+      </div>
+    ) : null}
+
+    {hasFilters ? (
+      <button
+        type="button"
+        class="ac-toolbar__toggle"
+        aria-expanded={panelOpen ? 'true' : 'false'}
+        aria-controls="ac-filter-panel"
+      >
+        <Icon name="funnel" size={16} aria-hidden="true" />
+        Filters
+        {filterCount > 0 ? <span class="ac-toolbar__badge">{filterCount}</span> : null}
+        <Icon name="chevron-down" size={14} aria-hidden="true" class="ac-toolbar__chevron" />
+      </button>
+    ) : null}
+
+    {anyActive ? <a href={basePath} class="ac-toolbar__clear">Clear all</a> : null}
+
+    <div class="ac-toolbar__actions"><slot name="actions" /></div>
+  </div>
+
+  {hasFilters ? (
+    <div class="ac-toolbar__panel" id="ac-filter-panel" hidden={!panelOpen}>
+      {filters.map((f) => (
+        <div class="ac-toolbar__group">
+          {f.type === 'bool' || f.type === 'present' ? (
+            <>
+              <span class="ac-toolbar__label" aria-hidden="true">&nbsp;</span>
+              <label class="ac-toolbar__check">
+                <input type="checkbox" name={f.key} value="1" checked={val(f.key) === '1'} />
+                <span>{f.label}</span>
+              </label>
+            </>
+          ) : (
+            <>
+              <span class="ac-toolbar__label">{f.label}</span>
+              {f.type === 'dateRange' ? (
+                <div class="ac-toolbar__range">
+                  <input type="date" name={`${f.key}_from`} value={val(`${f.key}_from`)} class="ac-toolbar__input" aria-label={`${f.label} from`} />
+                  <span aria-hidden="true">–</span>
+                  <input type="date" name={`${f.key}_to`} value={val(`${f.key}_to`)} class="ac-toolbar__input" aria-label={`${f.label} to`} />
+                </div>
+              ) : f.type === 'nonempty' ? (
+                <select name={f.key} class="ac-toolbar__input">
+                  <option value="" selected={val(f.key) === ''}>Any</option>
+                  <option value="set" selected={val(f.key) === 'set'}>{f.setLabel ?? 'Set'}</option>
+                  <option value="unset" selected={val(f.key) === 'unset'}>{f.unsetLabel ?? 'Not set'}</option>
+                </select>
+              ) : (
+                <select name={f.key} class="ac-toolbar__input">
+                  <option value="" selected={val(f.key) === ''}>Any</option>
+                  {f.options.map((o) => (
+                    <option value={o.value} selected={val(f.key) === o.value}>{o.label}</option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+      <div class="ac-toolbar__panel-actions">
+        <button type="submit" class="ac-toolbar__apply">
+          <Icon name="check" size={15} aria-hidden="true" />
+          Apply filters
+        </button>
+      </div>
+    </div>
+  ) : null}
+</form>
+
+<script>
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.ac-toolbar__toggle');
+    if (!btn) return;
+    const panel = btn.closest('.ac-toolbar')?.querySelector('.ac-toolbar__panel');
+    if (!panel) return;
+    const opening = panel.hasAttribute('hidden');
+    panel.toggleAttribute('hidden', !opening);
+    btn.setAttribute('aria-expanded', String(opening));
+  });
+</script>

@@ -1,0 +1,23 @@
+# Local working notes — never commit
+CLAUDE.md
+
+# Reference-only copy of the app's admin SCSS (extract, then delete)
+packages/astro-cms/styles/_admin-reference.scss
+
+# Dependencies / build
+node_modules/
+dist/
+.astro/
+*.tsbuildinfo
+
+# NOTE: styles/cms.css is a SHIPPED artifact (the ./styles.css export) — keep it
+# tracked so it's always in the npm tarball. Regenerate with `pnpm -w build:css`
+# (ideally also via a package `prepack` script) before publishing.
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store

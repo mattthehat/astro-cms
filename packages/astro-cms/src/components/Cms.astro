@@ -1,0 +1,128 @@
+---
+import { Form } from '@mattthehat/astro-forms';
+import Table from './Table.astro';
+import Pagination from './Pagination.astro';
+import Alert from './Alert.astro';
+import FilterBar from './FilterBar.astro';
+import Cell from './Cell.astro';
+import type { ResourceConfig, CmsState } from '../cms-resource';
+import { resourcePlural } from '../cms-resource';
+import { takeFlash } from '../flash';
+
+type Props = {
+  config: ResourceConfig<any>;
+  state: CmsState;
+  url: URL;
+};
+
+const { config, state, url } = Astro.props;
+const { basePath, singular } = config;
+const plural = resourcePlural(config);
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const params = url.searchParams;
+
+// Read-once flash messages from the cookie (set by the resource on redirect)
+const flashes = takeFlash(Astro.cookies);
+
+const newHeading = config.labels?.newHeading ?? `New ${singular}`;
+const title =
+  state.mode === 'form'
+    ? state.formMode === 'edit' ? `Edit ${singular}` : newHeading
+    : state.mode === 'view' ? `View ${singular}` : plural;
+
+const meta = (l: Extract<CmsState, { mode: 'list' }>['listing']) => {
+  if (l.total === 0) return `No ${plural.toLowerCase()} found`;
+  if (l.rows.length === 0) return `Showing 0 of ${l.total}`;
+  const start = (l.page - 1) * l.perPage + 1;
+  const end = start + l.rows.length - 1;
+  return `Showing ${start === end ? start : `${start}–${end}`} of ${l.total}`;
+};
+---
+
+<div class="ac-cms">
+  {flashes.map((f) => (
+    <Alert variant={f.variant} dismissable>
+      {f.message}
+      {f.href ? <> <a href={f.href} style="color: inherit; text-decoration: underline; word-break: break-all;">{f.href}</a></> : null}
+    </Alert>
+  ))}
+
+  {state.mode === 'form' ? (
+    <div class="ac-page">
+      <a class="ac-page__back" href={basePath}>‹ Back to {plural.toLowerCase()}</a>
+      <h1 class="ac-page__title">{cap(title)}</h1>
+      {state.formMode === 'create' && config.labels?.createNote && (
+        <p class="ac-page__meta">{config.labels.createNote}</p>
+      )}
+      <Form config={state.form} values={state.values} errors={state.errors} serverError={state.serverError}>
+        <button class="af-field__button" type="submit">
+          {state.formMode === 'edit' ? 'Save changes' : config.labels?.createSubmit ?? `Create ${singular}`}
+        </button>
+      </Form>
+      {/* Warn before leaving with unsaved changes (submitting clears the flag) */}
+      <script is:inline>
+        (function () {
+          var form = document.querySelector('form.af-form');
+          if (!form) return;
+          var dirty = false;
+          var mark = function () { dirty = true; };
+          form.addEventListener('input', mark);
+          form.addEventListener('change', mark);
+          form.addEventListener('submit', function () { dirty = false; });
+          window.addEventListener('beforeunload', function (e) {
+            if (!dirty) return;
+            e.preventDefault();
+            e.returnValue = '';
+          });
+        })();
+      </script>
+    </div>
+  ) : state.mode === 'view' ? (
+    <div class="ac-page ac-page--narrow">
+      <a class="ac-page__back" href={basePath}>‹ Back to {plural.toLowerCase()}</a>
+      <div class="ac-page__header">
+        <h1 class="ac-page__title">{cap(title)}</h1>
+        <a class="ac-page__cta" href={`${basePath}?action=edit&id=${state.id}`}>Edit</a>
+      </div>
+      <dl class="ac-detail">
+        {state.items.map((item) => (
+          <div class="ac-detail__row">
+            <dt class="ac-detail__label">{item.label}</dt>
+            <dd class="ac-detail__value"><Cell content={item.value} /></dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  ) : (
+    <div class="ac-page">
+      <div class="ac-page__header">
+        <div>
+          <h1 class="ac-page__title">{cap(plural)}</h1>
+          <p class="ac-page__meta">{meta(state.listing)}</p>
+        </div>
+      </div>
+      <FilterBar
+        filters={state.filters}
+        showSearch={state.searchColumns.length > 0}
+        searchColumns={state.searchColumns}
+        params={params}
+        basePath={basePath}
+      >
+        {state.canCreate && (
+          <a slot="actions" class="ac-page__cta" href={`${basePath}?action=new`}>
+            {config.labels?.newCta ?? `+ New ${singular}`}
+          </a>
+        )}
+      </FilterBar>
+      <Table
+        columns={state.columns}
+        rows={state.listing.rows}
+        url={url}
+        sort={state.sort}
+        emptyMessage={`No ${plural.toLowerCase()} match.`}
+        actions={state.actions}
+      />
+      <Pagination page={state.listing.page} totalPages={state.listing.totalPages} url={url} />
+    </div>
+  )}
+</div>

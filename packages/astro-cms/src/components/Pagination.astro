@@ -1,0 +1,54 @@
+---
+import Icon from './icons/Icon.astro';
+
+type Props = {
+  page: number;
+  totalPages: number;
+  /** Current URL — page links preserve all other query params */
+  url: URL;
+};
+
+const { page, totalPages, url } = Astro.props;
+
+const pageUrl = (p: number): string => {
+  const next = new URL(url);
+  if (p <= 1) next.searchParams.delete('page');
+  else next.searchParams.set('page', String(p));
+  return next.pathname + next.search;
+};
+
+// Window of pages around the current one, always including first and last
+const windowSize = 2;
+const pages: (number | '…')[] = [];
+for (let p = 1; p <= totalPages; p++) {
+  if (p === 1 || p === totalPages || Math.abs(p - page) <= windowSize) {
+    pages.push(p);
+  } else if (pages[pages.length - 1] !== '…') {
+    pages.push('…');
+  }
+}
+---
+
+{totalPages > 1 && (
+  <nav class="ac-pagination" aria-label="Pagination">
+    {page > 1 ? (
+      <a class="ac-pagination__link" href={pageUrl(page - 1)} rel="prev"><Icon name="chevron-left" size={16} aria-hidden="true" /> Prev</a>
+    ) : (
+      <span class="ac-pagination__link ac-pagination__link--disabled" aria-hidden="true"><Icon name="chevron-left" size={16} /> Prev</span>
+    )}
+    {pages.map(p =>
+      p === '…' ? (
+        <span class="ac-pagination__ellipsis" aria-hidden="true">…</span>
+      ) : p === page ? (
+        <span class="ac-pagination__link ac-pagination__link--current" aria-current="page">{p}</span>
+      ) : (
+        <a class="ac-pagination__link" href={pageUrl(p)}>{p}</a>
+      )
+    )}
+    {page < totalPages ? (
+      <a class="ac-pagination__link" href={pageUrl(page + 1)} rel="next">Next <Icon name="chevron-right" size={16} aria-hidden="true" /></a>
+    ) : (
+      <span class="ac-pagination__link ac-pagination__link--disabled" aria-hidden="true">Next <Icon name="chevron-right" size={16} /></span>
+    )}
+  </nav>
+)}

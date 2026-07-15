@@ -1,0 +1,11 @@
+{
+  "name": "astro-cms-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.0.0",
+  "scripts": {
+    "build:css": "pnpm --filter @mattthehat/astro-cms build:css",
+    "check": "pnpm --filter @mattthehat/astro-cms check",
+    "dev": "pnpm --filter playground dev",
+    "test": "pnpm --filter @mattthehat/astro-cms test"
+  }
+}

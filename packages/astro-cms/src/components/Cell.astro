@@ -1,0 +1,29 @@
+---
+import Icon from './icons/Icon.astro';
+import type { CellValue, CellContent } from './types';
+
+type Props = { content: CellValue };
+
+const { content } = Astro.props;
+const c: CellContent = typeof content === 'string' ? { text: content } : content;
+const inner = `${c.prefix ?? ''}${c.text ?? ''}${c.suffix ?? ''}`;
+const iconOnly = c.text === undefined || c.text === '';
+---
+
+{c.pill ? (
+  <span class={`ac-table-cell__pill ac-table-cell__pill--${c.pill}`}>
+    {c.icon ? <Icon name={c.icon} size={13} aria-hidden="true" /> : null}
+    {inner ? <span>{inner}</span> : null}
+  </span>
+) : c.icon && iconOnly ? (
+  <span class={`ac-table-cell__icon${c.iconVariant ? ` ac-table-cell__icon--${c.iconVariant}` : ''}`} role="img" aria-label={c.label ?? ''}>
+    <Icon name={c.icon} size={18} aria-hidden="true" />
+  </span>
+) : c.icon ? (
+  <span class="ac-table-cell__inline">
+    <Icon name={c.icon} size={14} aria-hidden="true" />
+    <span>{inner}</span>
+  </span>
+) : (
+  <Fragment>{inner}</Fragment>
+)}

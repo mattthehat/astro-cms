@@ -1,0 +1,44 @@
+---
+import '@mattthehat/astro-forms/styles.css';
+import '@mattthehat/astro-cms/styles.css';
+
+type Props = { title: string };
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · astro-cms playground</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        background-color: #f8fafc;
+        color: #111827;
+        line-height: 1.5;
+      }
+      a { text-decoration: none; color: inherit; }
+      button { font: inherit; border: none; background: none; }
+      header {
+        border-bottom: 1px solid #e5e7eb;
+        background-color: #ffffff;
+        padding: 0.75rem 1rem;
+        font-weight: 700;
+      }
+      main {
+        max-width: 64rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>astro-cms playground</header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

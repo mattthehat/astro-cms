@@ -1,0 +1,128 @@
+---
+import Icon from './icons/Icon.astro';
+import Cell from './Cell.astro';
+import type { Column, RowAction, CellValue } from './types';
+
+type Props = {
+  columns: Column[];
+  rows: Record<string, unknown>[];
+  caption?: string;
+  emptyMessage?: string;
+  actions?: RowAction[];
+  /** Current URL — sortable headers build links that preserve other params */
+  url?: URL;
+  /** Active sort, used to show direction and toggle */
+  sort?: { column: string; dir: 'asc' | 'desc' };
+};
+
+const { columns, rows, caption, emptyMessage = 'Nothing to show yet.', actions = [], url, sort } = Astro.props;
+
+const EMPTY = '—';
+
+// Sort link for a column header — toggles direction, resets to page 1, keeps
+// every other query param (search, filters)
+const sortHref = (column: string, dir: 'asc' | 'desc'): string => {
+  if (!url) return '#';
+  const next = new URL(url);
+  next.searchParams.set('sort', column);
+  next.searchParams.set('dir', dir);
+  next.searchParams.delete('page');
+  return next.pathname + next.search;
+};
+
+const cell = (col: Column, row: Record<string, unknown>): CellValue => {
+  const value = row[col.key];
+  if (col.format) return col.format(value, row);
+  if (value === null || value === undefined) return EMPTY;
+  return String(value);
+};
+
+const isIconOnly = (c: CellValue) =>
+  typeof c === 'object' && !!c.icon && (c.text === undefined || c.text === '');
+const isEmpty = (c: CellValue) =>
+  c === EMPTY ||
+  (typeof c === 'object' && !c.icon && (c.text === undefined || c.text === '' || c.text === EMPTY));
+
+// Alignment is decided per column so the header and its cells always agree:
+// centre a column that is explicitly aligned, or whose every cell is an
+// icon-only/empty value (e.g. booleans, or an all-null column).
+const columnAlign = (col: Column): Column['align'] => {
+  if (col.align) return col.align;
+  if (rows.length === 0) return undefined;
+  const allIconOrEmpty = rows.every(row => {
+    const c = cell(col, row);
+    return isIconOnly(c) || isEmpty(c);
+  });
+  return allIconOrEmpty ? 'centre' : undefined;
+};
+const aligns = new Map(columns.map(col => [col.key, columnAlign(col)]));
+---
+
+<div class="ac-table-wrap">
+  <table class="ac-table">
+    {caption ? <caption class="ac-table__caption">{caption}</caption> : null}
+    <thead>
+      <tr>
+        {columns.map(col => {
+          const align = aligns.get(col.key);
+          const cls = `ac-table__th${align ? ` ac-table__cell--${align}` : ''}`;
+          if (col.sortable && url) {
+            const active = sort?.column === col.key;
+            const nextDir = active && sort?.dir === 'asc' ? 'desc' : 'asc';
+            return (
+              <th scope="col" class={cls} aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <a class:list={['ac-table__sort', { 'ac-table__sort--active': active }]} href={sortHref(col.key, nextDir)}>
+                  {col.label}
+                  {active
+                    ? <Icon name={sort!.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={13} aria-hidden="true" />
+                    : <Icon name="chevrons-up-down" size={13} aria-hidden="true" class="ac-table__sort-idle" />}
+                </a>
+              </th>
+            );
+          }
+          return <th scope="col" class={cls}>{col.label}</th>;
+        })}
+        {actions.length > 0 ? <th scope="col" class="ac-table__th ac-table__cell--right"><span class="ac-sr-only">Actions</span></th> : null}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.length === 0 ? (
+        <tr>
+          <td class="ac-table__td ac-table__td--empty" colspan={columns.length + (actions.length ? 1 : 0)}>{emptyMessage}</td>
+        </tr>
+      ) : null}
+      {rows.map(row => (
+        <tr class="ac-table__row">
+          {columns.map(col => {
+            const align = aligns.get(col.key);
+            return <td class={`ac-table__td${align ? ` ac-table__cell--${align}` : ''}`}><Cell content={cell(col, row)} /></td>;
+          })}
+          {actions.length > 0 ? (
+            <td class="ac-table__td ac-table__td--actions">
+              {actions.filter(action => !action.show || action.show(row)).map(action => (
+                'href' in action ? (
+                  <a class={`ac-table__action${action.variant ? ` ac-table__action--${action.variant}` : ''}`} href={action.href(row)}>
+                    {action.icon ? <Icon name={action.icon} size={14} aria-hidden="true" /> : null}
+                    {action.label}
+                  </a>
+                ) : (
+                  <form
+                    method="post"
+                    action={action.formAction(row)}
+                    class="ac-table__action-form"
+                    onsubmit={action.confirm ? `return confirm(${JSON.stringify(action.confirm)})` : undefined}
+                  >
+                    <button type="submit" class={`ac-table__action${action.variant ? ` ac-table__action--${action.variant}` : ''}`}>
+                      {action.icon ? <Icon name={action.icon} size={14} aria-hidden="true" /> : null}
+                      {action.label}
+                    </button>
+                  </form>
+                )
+              ))}
+            </td>
+          ) : null}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>

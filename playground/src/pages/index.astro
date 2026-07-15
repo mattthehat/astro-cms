@@ -1,0 +1,19 @@
+---
+import { Cms, runCmsResource } from '@mattthehat/astro-cms';
+import Layout from '../layouts/Layout.astro';
+import { gigs } from '../resources/gigs';
+import { adapter } from '../lib/adapter';
+
+const result = await runCmsResource(gigs, {
+  request: Astro.request,
+  url: Astro.url,
+  cookies: Astro.cookies,
+  adapter,
+});
+
+if ('redirect' in result) return Astro.redirect(result.redirect);
+---
+
+<Layout title="Gigs">
+  <Cms config={gigs} state={result.state} url={Astro.url} />
+</Layout>

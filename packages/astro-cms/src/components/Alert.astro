@@ -1,0 +1,33 @@
+---
+import Icon from './icons/Icon.astro';
+
+type Props = {
+  variant?: 'success' | 'warning' | 'error' | 'info';
+  dismissable?: boolean;
+};
+
+const { variant = 'info', dismissable = false } = Astro.props;
+const icons = {
+  success: 'circle-check',
+  warning: 'triangle-alert',
+  error: 'circle-alert',
+  info: 'info',
+} as const;
+---
+
+<div class={`ac-alert ac-alert--${variant}`} role={variant === 'error' ? 'alert' : 'status'}>
+  <Icon name={icons[variant]} class="ac-alert__icon" size={20} aria-hidden="true" />
+  <div class="ac-alert__content"><slot /></div>
+  {dismissable && (
+    <button type="button" class="ac-alert__dismiss" aria-label="Dismiss">
+      <Icon name="x" size={16} aria-hidden="true" />
+    </button>
+  )}
+</div>
+
+<script>
+  document.addEventListener('click', (e) => {
+    const dismiss = (e.target as HTMLElement).closest('.ac-alert__dismiss');
+    if (dismiss) dismiss.closest('.ac-alert')?.remove();
+  });
+</script>
