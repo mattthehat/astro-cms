@@ -1,6 +1,6 @@
 import type { AstroCookies } from 'astro'
-import type { FieldErrors } from '@mattthehat/astro-forms'
-import { parseForm } from '@mattthehat/astro-forms'
+import type { FieldErrors } from '@mattthehat/astro-forms/server'
+import { parseForm } from '@mattthehat/astro-forms/server'
 import type { CmsAdapter, CmsField, CmsFieldMap, CmsId, CmsRow } from './types'
 import type { CmsFilters } from './filters'
 import { filterStatesFrom } from './filters'

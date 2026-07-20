@@ -1,4 +1,4 @@
-import type { FieldConfig, FieldErrors } from '@mattthehat/astro-forms'
+import type { FieldConfig, FieldErrors } from '@mattthehat/astro-forms/server'
 import type { CellVariant, Decorator } from './components/types'
 
 // ── Field configuration (extends astro-forms) ────────────────────────────────

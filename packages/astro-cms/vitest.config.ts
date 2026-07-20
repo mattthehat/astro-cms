@@ -1,5 +1,6 @@
-// getViteConfig wires in Astro's Vite plugin so imports that pull in .astro
-// components (e.g. the astro-forms index) transform correctly under Vitest
-import { getViteConfig } from 'astro/config'
+import { defineConfig } from 'vitest/config'
 
-export default getViteConfig({})
+// The engine and adapters import astro-forms' server-only entry
+// (@mattthehat/astro-forms/server), so the tests pull in no .astro components
+// and need no Astro-specific Vite pipeline.
+export default defineConfig({})

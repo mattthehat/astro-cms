@@ -1,4 +1,4 @@
-import type { FormConfig } from '@mattthehat/astro-forms'
+import type { FormConfig } from '@mattthehat/astro-forms/server'
 import type { CmsField, CmsFieldMap, ColumnFormat, ColumnConfig } from './types'
 import type { Column, CellValue, CellContent, Decorator } from './components/types'
 

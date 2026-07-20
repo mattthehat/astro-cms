@@ -1,6 +1,6 @@
 {
   "name": "@mattthehat/astro-cms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Config-driven admin CMS for Astro: one resource config renders a full list/create/edit/view/delete screen with search, filters, sorting and pagination, DB-agnostic via a small adapter interface.",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@mattthehat/astro-forms": "^0.1.0",
+    "@mattthehat/astro-forms": "^0.2.0",
     "astro": "^6.4.5",
     "atlas-mysql": "^4.1.1",
     "sass": "^1.101.0",
@@ -43,7 +43,7 @@
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
-    "@mattthehat/astro-forms": "^0.1.0",
+    "@mattthehat/astro-forms": "^0.2.0",
     "astro": "^6.4.5",
     "atlas-mysql": "^4.0.0"
   },
