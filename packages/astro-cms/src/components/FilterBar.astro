@@ -62,44 +62,44 @@ const hasFilters = filters.length > 0;
 
   {hasFilters ? (
     <div class="ac-toolbar__panel" id="ac-filter-panel" hidden={!panelOpen}>
-      {filters.map((f) => (
-        <div class="ac-toolbar__group">
-          {f.type === 'bool' || f.type === 'present' ? (
-            <>
-              <span class="ac-toolbar__label" aria-hidden="true">&nbsp;</span>
+      <div class="ac-toolbar__grid">
+        {filters.map((f) => (
+          <div class:list={['ac-toolbar__group', { 'ac-toolbar__group--wide': f.type === 'dateRange' }]}>
+            {f.type === 'bool' || f.type === 'present' ? (
               <label class="ac-toolbar__check">
                 <input type="checkbox" name={f.key} value="1" checked={val(f.key) === '1'} />
                 <span>{f.label}</span>
               </label>
-            </>
-          ) : (
-            <>
-              <span class="ac-toolbar__label">{f.label}</span>
-              {f.type === 'dateRange' ? (
-                <div class="ac-toolbar__range">
-                  <input type="date" name={`${f.key}_from`} value={val(`${f.key}_from`)} class="ac-toolbar__input" aria-label={`${f.label} from`} />
-                  <span aria-hidden="true">–</span>
-                  <input type="date" name={`${f.key}_to`} value={val(`${f.key}_to`)} class="ac-toolbar__input" aria-label={`${f.label} to`} />
-                </div>
-              ) : f.type === 'nonempty' ? (
-                <select name={f.key} class="ac-toolbar__input">
-                  <option value="" selected={val(f.key) === ''}>Any</option>
-                  <option value="set" selected={val(f.key) === 'set'}>{f.setLabel ?? 'Set'}</option>
-                  <option value="unset" selected={val(f.key) === 'unset'}>{f.unsetLabel ?? 'Not set'}</option>
-                </select>
-              ) : (
-                <select name={f.key} class="ac-toolbar__input">
-                  <option value="" selected={val(f.key) === ''}>Any</option>
-                  {f.options.map((o) => (
-                    <option value={o.value} selected={val(f.key) === o.value}>{o.label}</option>
-                  ))}
-                </select>
-              )}
-            </>
-          )}
-        </div>
-      ))}
+            ) : (
+              <>
+                <span class="ac-toolbar__label">{f.label}</span>
+                {f.type === 'dateRange' ? (
+                  <div class="ac-toolbar__range">
+                    <input type="date" name={`${f.key}_from`} value={val(`${f.key}_from`)} class="ac-toolbar__input" aria-label={`${f.label} from`} />
+                    <span class="ac-toolbar__range-sep" aria-hidden="true">–</span>
+                    <input type="date" name={`${f.key}_to`} value={val(`${f.key}_to`)} class="ac-toolbar__input" aria-label={`${f.label} to`} />
+                  </div>
+                ) : f.type === 'nonempty' ? (
+                  <select name={f.key} class="ac-toolbar__input">
+                    <option value="" selected={val(f.key) === ''}>Any</option>
+                    <option value="set" selected={val(f.key) === 'set'}>{f.setLabel ?? 'Set'}</option>
+                    <option value="unset" selected={val(f.key) === 'unset'}>{f.unsetLabel ?? 'Not set'}</option>
+                  </select>
+                ) : (
+                  <select name={f.key} class="ac-toolbar__input">
+                    <option value="" selected={val(f.key) === ''}>Any</option>
+                    {f.options.map((o) => (
+                      <option value={o.value} selected={val(f.key) === o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
       <div class="ac-toolbar__panel-actions">
+        {anyActive ? <a href={basePath} class="ac-toolbar__reset">Reset</a> : null}
         <button type="submit" class="ac-toolbar__apply">
           <Icon name="check" size={15} aria-hidden="true" />
           Apply filters

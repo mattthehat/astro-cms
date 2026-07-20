@@ -198,26 +198,42 @@ $cell-variants: (
     }
 
     &__panel {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        gap: 0.75rem 1rem;
         margin-top: 0.75rem;
-        padding: 1rem;
+        padding: 1.25rem;
         border: 1px solid $border;
         border-radius: $radius-lg;
         background-color: $surface;
 
-        // display:flex would otherwise override the hidden attribute
         &[hidden] {
             display: none;
         }
     }
 
+    // Filter controls laid out on an even grid: columns of equal width that
+    // wrap cleanly, with every control aligned to a shared bottom baseline so
+    // labelled dropdowns and lone checkboxes line up row by row.
+    &__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+        gap: 1rem 1.25rem;
+        align-items: end;
+    }
+
     &__group {
         display: flex;
         flex-direction: column;
-        gap: 0.3rem;
+        gap: 0.4rem;
+        min-width: 0;
+
+        // A date range needs room for two inputs, so it spans two columns
+        // (collapsing back to one when the grid itself is single-column)
+        &--wide {
+            grid-column: span 2;
+
+            @media (max-width: 32rem) {
+                grid-column: auto;
+            }
+        }
     }
 
     &__label {
@@ -232,11 +248,21 @@ $cell-variants: (
     &__range {
         display: flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
+
+        .ac-toolbar__input {
+            flex: 1 1 0;
+        }
+    }
+
+    &__range-sep {
         color: $text-muted;
     }
 
     &__input {
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
         font-size: 0.875rem;
         color: $text;
         background-color: $surface;
@@ -254,17 +280,15 @@ $cell-variants: (
         }
     }
 
-    // Uniform width for the dropdown filters so the groups line up neatly
-    select.ac-toolbar__input {
-        min-width: 9rem;
-    }
-
     &__check {
         display: flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
+        // Match the control height so the checkbox aligns with sibling
+        // dropdowns on the grid's shared bottom baseline
+        height: 2.5rem;
         font-size: 0.875rem;
-        min-height: 2.5rem;
+        color: $text;
         cursor: pointer;
 
         input {
@@ -274,11 +298,16 @@ $cell-variants: (
         }
     }
 
+    // Full-width footer with a divider — a conventional panel action bar,
+    // so Apply sits in a predictable place instead of floating mid-wrap
     &__panel-actions {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        margin-left: auto;
+        justify-content: flex-end;
+        gap: 1rem;
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid $border;
     }
 
     &__apply {
@@ -302,6 +331,16 @@ $cell-variants: (
         &:focus-visible {
             outline: none;
             box-shadow: 0 0 0 3px color-mix(in srgb, $primary 35%, transparent);
+        }
+    }
+
+    &__reset {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: $text-muted;
+
+        &:hover {
+            color: $error;
         }
     }
 
