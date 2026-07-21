@@ -82,7 +82,7 @@ const meta = (l: Extract<CmsState, { mode: 'list' }>['listing']) => {
       <a class="ac-page__back" href={basePath}>‹ Back to {plural.toLowerCase()}</a>
       <div class="ac-page__header">
         <h1 class="ac-page__title">{cap(title)}</h1>
-        <a class="ac-page__cta" href={`${basePath}?action=edit&id=${state.id}`}>Edit</a>
+        {state.canEdit && <a class="ac-page__cta" href={`${basePath}?action=edit&id=${state.id}`}>Edit</a>}
       </div>
       <dl class="ac-detail">
         {state.items.map((item) => (

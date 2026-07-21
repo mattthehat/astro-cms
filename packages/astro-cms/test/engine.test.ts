@@ -228,6 +228,8 @@ describe('view', () => {
     expect(state.id).toBe(1)
     // `live` has a bool list format, so the view reuses the tick icon
     expect(state.items.find((i) => i.key === 'live')!.value).toMatchObject({ icon: 'lucide:check', label: 'Yes' })
+    // Edit is allowed by default, so the view screen shows its Edit CTA
+    expect(state.canEdit).toBe(true)
   })
 })
 
@@ -264,6 +266,32 @@ describe('canCreate gate', () => {
 
     const state = listState(await run(config, '/admin/things', { adapter }))
     expect(state.canCreate).toBe(false)
+  })
+})
+
+describe('canEdit gate', () => {
+  it('blocks the edit form, hides the view CTA and drops the Edit row action', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = resource()
+    config.canEdit = () => false
+    const cookies = fakeCookies()
+
+    // Edit form is blocked server-side (GET render and POST submit)
+    const blocked = await run(config, '/admin/things?action=edit&id=2', { adapter, cookies })
+    expect(blocked).toEqual({ redirect: '/admin/things' })
+    expect(cookies.store.get('ac_flash')).toContain('permission')
+
+    // View screen reports canEdit false so the component omits the Edit CTA
+    const viewResult = await run(config, '/admin/things?action=view&id=1', { adapter })
+    const viewState = (viewResult as { state: CmsState }).state
+    expect(viewState.mode).toBe('view')
+    if (viewState.mode !== 'view') return
+    expect(viewState.canEdit).toBe(false)
+
+    // Default row actions drop Edit, keeping Delete
+    const labels = listState(await run(config, '/admin/things', { adapter })).actions.map((a) => a.label)
+    expect(labels).not.toContain('Edit')
+    expect(labels).toContain('Delete')
   })
 })
 

@@ -1,6 +1,6 @@
 {
   "name": "@mattthehat/astro-cms",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Config-driven admin CMS for Astro: one resource config renders a full list/create/edit/view/delete screen with search, filters, sorting and pagination, DB-agnostic via a small adapter interface.",
   "type": "module",
   "license": "MIT",

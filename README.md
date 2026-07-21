@@ -185,6 +185,7 @@ a `switch` field arrives as `boolean`, a multi-`select` as `string[]`.
 
 ```ts
 canCreate: (ctx) => ctx.user?.role === 'admin',
+canEdit: (ctx) => ctx.user?.role === 'admin',
 rowActions: (ctx) => [
   { label: 'View', icon: 'lucide:eye', href: (row) => `/admin/gigs?action=view&id=${row.id}` },
   ...(ctx.user?.role === 'admin' ? defaultRowActions : []),
@@ -192,7 +193,10 @@ rowActions: (ctx) => [
 ```
 
 `canCreate` hides the "New" button and blocks the create form and its POST
-server-side. `rowActions` replaces the default Edit/Delete pair; entries are links
+server-side. `canEdit` does the same for editing: when it returns false the Edit
+row action and the view screen's Edit CTA are hidden, and the edit form/POST is
+blocked server-side — set `canEdit: () => false` for a read-only resource.
+`rowActions` replaces the default Edit/Delete pair; entries are links
 (`href`) or POST forms (`formAction`, with optional `confirm`), and `show(row)`
 hides an action per row.
 

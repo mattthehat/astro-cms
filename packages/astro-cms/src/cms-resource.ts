@@ -73,6 +73,12 @@ export type ResourceConfig<FM extends CmsFieldMap = CmsFieldMap> = {
    * "new" CTA is hidden and the create form/submit is blocked server-side.
    */
   canCreate?: (ctx: CmsContext) => boolean
+  /**
+   * Gate editing existing rows on the current user. When it returns false the
+   * Edit row action and the view screen's Edit CTA are hidden, and the edit
+   * form/submit is blocked server-side. Use for read-only resources.
+   */
+  canEdit?: (ctx: CmsContext) => boolean
   /** Override the row actions; receives request context (for the current user) */
   rowActions?: (ctx: CmsContext) => RowAction[]
   labels?: { newHeading?: string; newCta?: string; createSubmit?: string; createNote?: string }
@@ -117,7 +123,7 @@ export type CmsState =
       errors: FieldErrors
       serverError?: string
     }
-  | { mode: 'view'; id: number; items: ViewItem[] }
+  | { mode: 'view'; id: number; items: ViewItem[]; canEdit: boolean }
 
 export type CmsResult = { redirect: string } | { state: CmsState }
 
@@ -132,8 +138,14 @@ export const pluralise = (s: string): string => {
 
 export const resourcePlural = (config: ResourceConfig): string => config.plural ?? pluralise(config.singular)
 
-const defaultActions = (config: Pick<ResourceConfig, 'basePath' | 'idColumn' | 'singular'>): RowAction[] => [
-  { label: 'Edit', icon: 'lucide:pencil', href: (row) => `${config.basePath}?action=edit&id=${row[config.idColumn]}` },
+const defaultActions = (
+  config: Pick<ResourceConfig, 'basePath' | 'idColumn' | 'singular'>,
+  canEdit: boolean
+): RowAction[] => [
+  // Edit is dropped for read-only resources (canEdit === false)
+  ...(canEdit
+    ? [{ label: 'Edit', icon: 'lucide:pencil', href: (row) => `${config.basePath}?action=edit&id=${row[config.idColumn]}` } as RowAction]
+    : []),
   {
     label: 'Delete',
     icon: 'lucide:trash-2',
@@ -164,10 +176,17 @@ export const runCmsResource = async <FM extends CmsFieldMap>(
   const isFormView = action === 'new' || (action === 'edit' && id !== null)
   const post = request.method === 'POST'
   const canCreate = config.canCreate ? config.canCreate(cms) : true
+  const canEdit = config.canEdit ? config.canEdit(cms) : true
 
   // Block the create form (GET render and POST submit) when not permitted
   if (action === 'new' && !canCreate) {
     cms.flash([{ variant: 'error', message: `You don’t have permission to add a ${singular}.` }])
+    return { redirect: basePath }
+  }
+
+  // Block the edit form (GET render and POST submit) when not permitted
+  if (action === 'edit' && !canEdit) {
+    cms.flash([{ variant: 'error', message: `You don’t have permission to edit this ${singular}.` }])
     return { redirect: basePath }
   }
 
@@ -244,7 +263,7 @@ export const runCmsResource = async <FM extends CmsFieldMap>(
       cms.flash([{ variant: 'warning', message: `That ${singular} no longer exists.` }])
       return { redirect: basePath }
     }
-    return { state: { mode: 'view', id, items: viewItemsFor(row, fields) } }
+    return { state: { mode: 'view', id, items: viewItemsFor(row, fields), canEdit } }
   }
 
   // ── List ─────────────────────────────────────────────────────────────────────
@@ -281,7 +300,7 @@ export const runCmsResource = async <FM extends CmsFieldMap>(
       filters,
       searchColumns,
       sort: { column, dir },
-      actions: config.rowActions ? config.rowActions(cms) : defaultActions(config),
+      actions: config.rowActions ? config.rowActions(cms) : defaultActions(config, canEdit),
       columns: tableColumns(fields),
       canCreate,
     },
