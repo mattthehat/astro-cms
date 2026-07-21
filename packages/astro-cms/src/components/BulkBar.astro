@@ -1,0 +1,72 @@
+---
+import Icon from './icons/Icon.astro';
+import type { BulkAction } from '../cms-resource';
+
+type Props = {
+  actions: BulkAction[];
+  basePath: string;
+  url: URL;
+  /** Id the table's checkboxes point at with their `form` attribute */
+  formId?: string;
+};
+
+const { actions, basePath, url, formId = 'ac-bulk' } = Astro.props;
+
+// Keep the list state (page, sort, filters, trash) so the redirect comes back here
+const params = new URLSearchParams(url.searchParams);
+params.delete('id');
+params.set('action', 'bulk');
+---
+
+<form id={formId} class="ac-bulk" method="post" action={`${basePath}?${params.toString()}`} hidden data-ac-bulk>
+  <p class="ac-bulk__count"><strong data-ac-bulk-count>0</strong> selected</p>
+  <div class="ac-bulk__actions">
+    {actions.map(action => (
+      <button
+        type="submit"
+        name="bulk"
+        value={action.key}
+        class={`ac-bulk__button${action.variant ? ` ac-bulk__button--${action.variant}` : ''}`}
+        data-ac-confirm={action.confirm}
+      >
+        {action.icon ? <Icon name={action.icon} size={14} aria-hidden="true" /> : null}
+        {action.label}
+      </button>
+    ))}
+  </div>
+  <button type="button" class="ac-bulk__clear" data-ac-bulk-clear>Clear selection</button>
+</form>
+
+<script is:inline>
+  (function () {
+    var form = document.currentScript.previousElementSibling;
+    if (!form || !form.hasAttribute('data-ac-bulk')) return;
+    var count = form.querySelector('[data-ac-bulk-count]');
+
+    // The table emits this whenever a checkbox changes
+    document.addEventListener('ac:selection', function (e) {
+      var n = e.detail ? e.detail.count : 0;
+      if (count) count.textContent = String(n);
+      form.hidden = n === 0;
+    });
+
+    form.addEventListener('submit', function (e) {
+      var button = e.submitter;
+      var message = button && button.getAttribute('data-ac-confirm');
+      var n = count ? count.textContent : '0';
+      if (message && !window.confirm(message.replace('{n}', n))) e.preventDefault();
+    });
+
+    var clear = form.querySelector('[data-ac-bulk-clear]');
+    if (clear) {
+      clear.addEventListener('click', function () {
+        document.querySelectorAll('[data-ac-select], [data-ac-select-all]').forEach(function (box) {
+          box.checked = false;
+          box.indeterminate = false;
+        });
+        if (count) count.textContent = '0';
+        form.hidden = true;
+      });
+    }
+  })();
+</script>

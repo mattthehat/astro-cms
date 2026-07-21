@@ -5,6 +5,8 @@ import Pagination from './Pagination.astro';
 import Alert from './Alert.astro';
 import FilterBar from './FilterBar.astro';
 import Cell from './Cell.astro';
+import BulkBar from './BulkBar.astro';
+import ListControls from './ListControls.astro';
 import type { ResourceConfig, CmsState } from '../cms-resource';
 import { resourcePlural } from '../cms-resource';
 import { takeFlash } from '../flash';
@@ -82,7 +84,7 @@ const meta = (l: Extract<CmsState, { mode: 'list' }>['listing']) => {
       <a class="ac-page__back" href={basePath}>‹ Back to {plural.toLowerCase()}</a>
       <div class="ac-page__header">
         <h1 class="ac-page__title">{cap(title)}</h1>
-        {state.canEdit && <a class="ac-page__cta" href={`${basePath}?action=edit&id=${state.id}`}>Edit</a>}
+        {state.canEdit && <a class="ac-page__cta" href={`${basePath}?action=edit&id=${encodeURIComponent(String(state.id))}`}>Edit</a>}
       </div>
       <dl class="ac-detail">
         {state.items.map((item) => (
@@ -108,18 +110,34 @@ const meta = (l: Extract<CmsState, { mode: 'list' }>['listing']) => {
         params={params}
         basePath={basePath}
       >
-        {state.canCreate && (
+        {state.canCreate && !state.trash && (
           <a slot="actions" class="ac-page__cta" href={`${basePath}?action=new`}>
             {config.labels?.newCta ?? `+ New ${singular}`}
           </a>
         )}
       </FilterBar>
+      <ListControls
+        url={url}
+        basePath={basePath}
+        perPage={state.listing.perPage}
+        perPageOptions={state.perPageOptions}
+        allColumns={state.allColumns}
+        visibleColumns={state.visibleColumns}
+        csv={state.csv}
+        softDelete={state.softDelete}
+        trash={state.trash}
+      />
+      {state.bulkActions.length > 0 && (
+        <BulkBar actions={state.bulkActions} basePath={basePath} url={url} />
+      )}
       <Table
         columns={state.columns}
         rows={state.listing.rows}
         url={url}
-        sort={state.sort}
-        emptyMessage={`No ${plural.toLowerCase()} match.`}
+        order={state.order}
+        idColumn={state.idColumn}
+        selectionForm={state.bulkActions.length > 0 ? 'ac-bulk' : undefined}
+        emptyMessage={state.trash ? `No deleted ${plural.toLowerCase()}.` : `No ${plural.toLowerCase()} match.`}
         actions={state.actions}
       />
       <Pagination page={state.listing.page} totalPages={state.listing.totalPages} url={url} />

@@ -8,6 +8,7 @@ export {
 } from './cms-resource'
 export type {
   ResourceConfig,
+  BulkAction,
   CmsHooks,
   CmsContext,
   CmsUser,
@@ -30,6 +31,7 @@ export type {
   FilterState,
   ListQuery,
   MappedError,
+  SortSpec,
 } from './types'
 
 export { filterStatesFrom, hasActiveFilters } from './filters'
@@ -37,6 +39,11 @@ export type { CmsFilters, FilterDef } from './filters'
 
 export {
   tableColumns,
+  listableColumns,
+  defaultVisibleColumns,
+  applyComputed,
+  exportColumns,
+  toCsv,
   formConfigFor,
   rowFromForm,
   rowToFormValues,

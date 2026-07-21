@@ -12,6 +12,8 @@ const result = await runCmsResource(gigs, {
 });
 
 if ('redirect' in result) return Astro.redirect(result.redirect);
+// The CSV export comes back as a ready-made Response
+if ('response' in result) return result.response;
 ---
 
 <Layout title="Gigs">

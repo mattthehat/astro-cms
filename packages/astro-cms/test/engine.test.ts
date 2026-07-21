@@ -3,7 +3,7 @@ import type { AstroCookies } from 'astro'
 import { defineResource, runCmsResource, pluralise, resourcePlural } from '../src/cms-resource'
 import type { CmsResult, CmsState, ResourceConfig } from '../src/cms-resource'
 import { memoryAdapter } from '../src/adapters/memory'
-import type { CmsAdapter } from '../src/types'
+import type { CmsAdapter, CmsId, ListQuery } from '../src/types'
 
 // Minimal AstroCookies stand-in — just enough for the flash helpers
 const fakeCookies = () => {
@@ -47,10 +47,13 @@ const resource = () =>
     ],
   })
 
+// `defineResource` infers each field's literal shape, which is the point in real
+// code but stops a test tweaking one flag in place. Variants widen first.
 type Resource = ReturnType<typeof resource>
+const variant = (): ResourceConfig => resource() as unknown as ResourceConfig
 
 const run = (
-  config: Resource,
+  config: Resource | ResourceConfig,
   path: string,
   { adapter, method = 'GET', body, cookies = fakeCookies() }: {
     adapter: CmsAdapter
@@ -64,7 +67,7 @@ const run = (
     method,
     ...(body ? { body: new URLSearchParams(body) } : {}),
   })
-  return runCmsResource(config, { request, url, cookies, adapter })
+  return runCmsResource(config as ResourceConfig, { request, url, cookies, adapter })
 }
 
 const listState = (result: CmsResult) => {
@@ -111,13 +114,338 @@ describe('list mode', () => {
   })
 
   it('sorts by a sortable column and ignores non-sortable ones', async () => {
+    // The original ?sort=col&dir= form still works
     let state = listState(await run(resource(), '/admin/things?sort=likes&dir=desc', { adapter }))
     expect(state.listing.rows.map((r) => r.likes)).toEqual([9, 7, 5])
-    expect(state.sort).toEqual({ column: 'likes', dir: 'desc' })
+    expect(state.order).toEqual([{ column: 'likes', dir: 'desc' }])
 
     // `city` is not marked sortable — falls back to the default sort
     state = listState(await run(resource(), '/admin/things?sort=city&dir=desc', { adapter }))
-    expect(state.sort.column).toBe('id')
+    expect(state.order[0].column).toBe('id')
+  })
+})
+
+describe('multi-column sort', () => {
+  const multi = () => {
+    const config = variant()
+    config.fields.city.sort = true
+    config.perPage = 10
+    return config
+  }
+
+  it('orders by every term in ?sort=, most significant first', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const state = listState(await run(multi(), '/admin/things?sort=city:asc,likes:desc', { adapter }))
+
+    expect(state.order).toEqual([
+      { column: 'city', dir: 'asc' },
+      { column: 'likes', dir: 'desc' },
+    ])
+    // Glasgow(9), Leeds(7), then London sorted by likes descending: 5 then 1
+    expect(state.listing.rows.map((r) => r.city)).toEqual(['Glasgow', 'Leeds', 'London', 'London'])
+    expect(state.listing.rows.map((r) => r.likes)).toEqual([9, 7, 5, 1])
+  })
+
+  it('drops non-sortable and duplicate terms', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const state = listState(await run(multi(), '/admin/things?sort=notes:asc,city:asc,city:desc', { adapter }))
+    // `notes` is not sortable and the repeated `city` is ignored
+    expect(state.order).toEqual([{ column: 'city', dir: 'asc' }])
+  })
+
+  it('passes the primary term as `sort` so single-sort adapters still work', async () => {
+    let seen: ListQuery | undefined
+    const adapter = memoryAdapter({ things: seed() })
+    const spy: CmsAdapter = { ...adapter, findMany: (q) => { seen = q; return adapter.findMany(q) } }
+
+    await run(multi(), '/admin/things?sort=city:desc,likes:asc', { adapter: spy })
+    expect(seen!.sort).toEqual({ column: 'city', dir: 'desc' })
+    expect(seen!.order).toHaveLength(2)
+  })
+})
+
+describe('per-page', () => {
+  it('accepts only a configured page size', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = variant()
+    config.perPageOptions = [2, 4]
+
+    const chosen = listState(await run(config, '/admin/things?perPage=2', { adapter }))
+    expect(chosen.listing.perPage).toBe(2)
+    expect(chosen.listing.rows).toHaveLength(2)
+
+    // Not in the list — falls back to the configured default rather than obeying
+    const bogus = listState(await run(config, '/admin/things?perPage=1000', { adapter }))
+    expect(bogus.listing.perPage).toBe(3)
+  })
+
+  it('offers no picker unless perPageOptions is set', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    expect(listState(await run(resource(), '/admin/things', { adapter })).perPageOptions).toEqual([])
+  })
+})
+
+describe('column visibility', () => {
+  it('hides `hidden` columns by default and honours ?cols=', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = variant()
+    config.fields.city.hidden = true
+
+    const byDefault = listState(await run(config, '/admin/things', { adapter }))
+    expect(byDefault.columns.map((c) => c.key)).not.toContain('city')
+    // The picker still lists it, so it can be turned back on
+    expect(byDefault.allColumns.map((c) => c.key)).toContain('city')
+
+    const chosen = listState(await run(config, '/admin/things?cols=city,likes', { adapter }))
+    expect(chosen.columns.map((c) => c.key)).toEqual(['city', 'likes'])
+
+    // An entirely bogus selection would leave a table with no columns
+    const bogus = listState(await run(config, '/admin/things?cols=nope', { adapter }))
+    expect(bogus.columns.map((c) => c.key)).toEqual(byDefault.columns.map((c) => c.key))
+  })
+})
+
+describe('computed columns', () => {
+  const computed = () => {
+    const config = variant()
+    config.fields.summary = {
+      label: 'Summary',
+      list: true,
+      compute: (row) => `${row.name} (${row.city})`,
+    }
+    return config
+  }
+
+  it('derives values after the read and keeps them out of the SELECT', async () => {
+    let seen: ListQuery | undefined
+    const adapter = memoryAdapter({ things: seed() })
+    const spy: CmsAdapter = { ...adapter, findMany: (q) => { seen = q; return adapter.findMany(q) } }
+
+    const state = listState(await run(computed(), '/admin/things', { adapter: spy }))
+    expect(seen!.columns).not.toContain('summary')
+    expect(state.listing.rows[0].summary).toBe('Alpha (London)')
+  })
+
+  it('reaches the view screen too', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const result = await run(computed(), '/admin/things?action=view&id=1', { adapter })
+    const state = (result as { state: CmsState }).state
+    if (state.mode !== 'view') throw new Error('expected view state')
+    expect(state.items.find((i) => i.key === 'summary')?.value).toBe('Alpha (London)')
+  })
+})
+
+describe('CSV export', () => {
+  const exportable = () => {
+    const config = variant()
+    config.csv = true
+    config.fields.likes.export = false
+    return config
+  }
+
+  it('exports every matching row, not just the current page', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const result = await run(exportable(), '/admin/things?action=export', { adapter })
+    if (!('response' in result)) throw new Error('expected a response')
+
+    expect(result.response.headers.get('content-type')).toContain('text/csv')
+    expect(result.response.headers.get('content-disposition')).toContain('things.csv')
+
+    const body = await result.response.text()
+    const lines = body.split('\r\n')
+    // Header plus all four rows, though perPage is 3
+    expect(lines).toHaveLength(5)
+    // `likes` opted out of the export
+    expect(lines[0]).toBe('Name,City,Live')
+    expect(lines[1]).toBe('Alpha,London,1')
+  })
+
+  it('respects the active search and quotes awkward values', async () => {
+    const adapter = memoryAdapter({ things: [{ id: 1, name: 'Alpha, "the first"', city: 'London', likes: 1, live: 1, notes: '', created: null }] })
+    const result = await run(exportable(), '/admin/things?action=export&q=Alpha', { adapter })
+    if (!('response' in result)) throw new Error('expected a response')
+
+    const lines = (await result.response.text()).split('\r\n')
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toBe('"Alpha, ""the first""",London,1')
+  })
+
+  it('is inert unless enabled', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    // Falls through to the normal list rather than exporting
+    const result = await run(resource(), '/admin/things?action=export', { adapter })
+    expect('state' in result).toBe(true)
+  })
+})
+
+describe('bulk actions', () => {
+  const bulkRun = (config: Resource | ResourceConfig, path: string, adapter: CmsAdapter, body: Record<string, string | string[]>) => {
+    const url = new URL(`http://localhost${path}`)
+    const form = new FormData()
+    for (const [key, value] of Object.entries(body)) {
+      for (const v of Array.isArray(value) ? value : [value]) form.append(key, v)
+    }
+    return runCmsResource(config as ResourceConfig, {
+      request: new Request(url, { method: 'POST', body: form }),
+      url,
+      cookies: fakeCookies(),
+      adapter,
+    })
+  }
+
+  it('offers Delete by default and removes the selection', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = resource()
+    expect(listState(await run(config, '/admin/things', { adapter })).bulkActions.map((a) => a.key)).toEqual(['delete'])
+
+    await bulkRun(config, '/admin/things?action=bulk', adapter, { bulk: 'delete', ids: ['1', '3'] })
+    const after = listState(await run(config, '/admin/things', { adapter }))
+    expect(after.listing.rows.map((r) => r.id)).toEqual([2, 4])
+  })
+
+  it('falls back to one remove per id when the adapter has no removeMany', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const { removeMany: _removeMany, ...withoutBulk } = adapter
+    const removed: unknown[] = []
+    const single: CmsAdapter = { ...withoutBulk, remove: (t, c, id) => { removed.push(id); return adapter.remove(t, c, id) } }
+
+    await bulkRun(resource(), '/admin/things?action=bulk', single, { bulk: 'delete', ids: ['1', '2'] })
+    expect(removed).toEqual([1, 2])
+  })
+
+  it('routes a custom bulk handler and ignores unknown keys', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = variant()
+    let got: CmsId[] = []
+    config.bulkActions = () => [{ key: 'publish', label: 'Publish' }]
+    config.hooks = { bulk: { publish: (ids) => { got = ids; return '/done' } } }
+
+    const result = await bulkRun(config, '/admin/things?action=bulk', adapter, { bulk: 'publish', ids: ['2', '4'] })
+    expect(result).toEqual({ redirect: '/done' })
+    expect(got).toEqual([2, 4])
+
+    // 'delete' is no longer on offer, so it must not delete anything
+    await bulkRun(config, '/admin/things?action=bulk', adapter, { bulk: 'delete', ids: ['1'] })
+    expect(await adapter.findOne('things', 'id', 1, ['id'])).not.toBeNull()
+  })
+
+  it('has no selection UI when the user cannot delete', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = resource()
+    config.canDelete = () => false
+    expect(listState(await run(config, '/admin/things', { adapter })).bulkActions).toEqual([])
+  })
+})
+
+describe('soft delete', () => {
+  const soft = () => {
+    const config = variant()
+    config.softDelete = { column: 'deleted_at' }
+    return config
+  }
+
+  it('stamps the column instead of deleting, then hides and restores the row', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = soft()
+
+    await run(config, '/admin/things?action=delete&id=1', { adapter, method: 'POST' })
+
+    // Still there, just stamped
+    const row = await adapter.findOne('things', 'id', 1, ['id', 'deleted_at'])
+    expect(row?.deleted_at).toBeInstanceOf(Date)
+
+    // Gone from the live list, present in the trash
+    expect(listState(await run(config, '/admin/things', { adapter })).listing.rows.map((r) => r.id)).toEqual([2, 3, 4])
+    const trash = listState(await run(config, '/admin/things?trash=1', { adapter }))
+    expect(trash.listing.rows.map((r) => r.id)).toEqual([1])
+    expect(trash.trash).toBe(true)
+    expect(trash.actions.map((a) => a.label)).toContain('Restore')
+
+    await run(config, '/admin/things?action=restore&id=1', { adapter, method: 'POST' })
+    // Back in the live list (whose first page holds perPage=3 of the 4 rows)
+    const restored = listState(await run(config, '/admin/things', { adapter }))
+    expect(restored.listing.total).toBe(4)
+    expect(restored.listing.rows.map((r) => r.id)).toEqual([1, 2, 3])
+    expect(listState(await run(config, '/admin/things?trash=1', { adapter })).listing.rows).toEqual([])
+  })
+
+  it('really deletes from the trash view', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = soft()
+
+    await run(config, '/admin/things?action=delete&id=1', { adapter, method: 'POST' })
+    await run(config, '/admin/things?action=delete&trash=1&id=1', { adapter, method: 'POST' })
+    expect(await adapter.findOne('things', 'id', 1, ['id'])).toBeNull()
+  })
+
+  it('treats a soft-deleted row as missing when viewed or edited directly', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = soft()
+    await run(config, '/admin/things?action=delete&id=1', { adapter, method: 'POST' })
+
+    expect(await run(config, '/admin/things?action=view&id=1', { adapter })).toEqual({ redirect: '/admin/things' })
+    expect(await run(config, '/admin/things?action=edit&id=1', { adapter })).toEqual({ redirect: '/admin/things' })
+  })
+})
+
+describe('timestamps', () => {
+  it('stamps created and updated on insert, and only updated on edit', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = variant()
+    config.timestamps = { created: 'created_at', updated: 'updated_at' }
+
+    await run(config, '/admin/things?action=new', { adapter, method: 'POST', body: { name: 'Echo', city: 'Bath', likes: '2', notes: '' } })
+    const created = await adapter.findOne('things', 'id', 5, ['created_at', 'updated_at'])
+    expect(created?.created_at).toBeInstanceOf(Date)
+    expect(created?.updated_at).toBeInstanceOf(Date)
+
+    await run(config, '/admin/things?action=edit&id=1', { adapter, method: 'POST', body: { name: 'Alpha II', city: 'London', likes: '5', notes: '' } })
+    const edited = await adapter.findOne('things', 'id', 1, ['created_at', 'updated_at'])
+    expect(edited?.created_at).toBeUndefined()
+    expect(edited?.updated_at).toBeInstanceOf(Date)
+  })
+})
+
+describe('optimistic concurrency', () => {
+  const versioned = () => {
+    const config = variant()
+    config.concurrency = { column: 'version' }
+    return config
+  }
+  const rows = () => seed().map((r) => ({ ...r, version: 1 }))
+
+  it('puts the current version in the form action', async () => {
+    const adapter = memoryAdapter({ things: rows() })
+    const result = await run(versioned(), '/admin/things?action=edit&id=1', { adapter })
+    const state = (result as { state: CmsState }).state
+    if (state.mode !== 'form') throw new Error('expected form state')
+    expect(state.form.action).toBe('/admin/things?action=edit&id=1&_v=1')
+  })
+
+  it('saves when the token matches', async () => {
+    const adapter = memoryAdapter({ things: rows() })
+    const result = await run(versioned(), '/admin/things?action=edit&id=1&_v=1', {
+      adapter, method: 'POST', body: { name: 'Alpha II', city: 'London', likes: '5', notes: '' },
+    })
+    expect(result).toEqual({ redirect: '/admin/things' })
+    expect((await adapter.findOne('things', 'id', 1, ['name']))?.name).toBe('Alpha II')
+  })
+
+  it('refuses the write when the row moved on, and does not clobber it', async () => {
+    const adapter = memoryAdapter({ things: rows() })
+    // Someone else saves while our form is open
+    await adapter.update('things', 'id', 1, { name: 'Alpha (theirs)', version: 2 })
+
+    const result = await run(versioned(), '/admin/things?action=edit&id=1&_v=1', {
+      adapter, method: 'POST', body: { name: 'Alpha (mine)', city: 'London', likes: '5', notes: '' },
+    })
+    const state = (result as { state: CmsState }).state
+    if (state.mode !== 'form') throw new Error('expected the form back')
+    expect(state.serverError).toMatch(/changed by someone else/)
+    // Their write survived; ours was not applied
+    expect((await adapter.findOne('things', 'id', 1, ['name']))?.name).toBe('Alpha (theirs)')
+    // The re-rendered form carries the new token, so a resubmit can go through
+    expect(state.form.action).toContain('_v=2')
   })
 })
 
@@ -292,6 +620,70 @@ describe('canEdit gate', () => {
     const labels = listState(await run(config, '/admin/things', { adapter })).actions.map((a) => a.label)
     expect(labels).not.toContain('Edit')
     expect(labels).toContain('Delete')
+  })
+})
+
+describe('canDelete gate', () => {
+  it('blocks the delete POST and drops the Delete row action', async () => {
+    const adapter = memoryAdapter({ things: seed() })
+    const config = resource()
+    config.canDelete = () => false
+    const cookies = fakeCookies()
+
+    const blocked = await run(config, '/admin/things?action=delete&id=1', { adapter, method: 'POST', cookies })
+    expect(blocked).toEqual({ redirect: '/admin/things' })
+    expect(cookies.store.get('ac_flash')).toContain('permission')
+
+    // The row survived — the gate ran before the adapter was touched
+    expect(await adapter.findOne('things', 'id', 1, ['id'])).not.toBeNull()
+
+    // Default row actions drop Delete, keeping Edit
+    const labels = listState(await run(config, '/admin/things', { adapter })).actions.map((a) => a.label)
+    expect(labels).not.toContain('Delete')
+    expect(labels).toContain('Edit')
+  })
+})
+
+describe('string ids', () => {
+  const slugResource = () => {
+    const config = resource() as unknown as ResourceConfig
+    config.table = 'docs'
+    config.idColumn = 'slug'
+    config.defaultSort = { column: 'slug', dir: 'asc' }
+    return config as Resource
+  }
+  const slugSeed = () => [
+    { slug: 'alpha-doc', name: 'Alpha', city: 'London', likes: 1, live: 1, notes: 'x', created: '2026-01-10 09:00:00' },
+    { slug: 'bravo-doc', name: 'Bravo', city: 'Leeds', likes: 2, live: 0, notes: 'y', created: '2026-02-10 09:00:00' },
+  ]
+
+  it('views, edits and deletes a row keyed by a non-numeric id', async () => {
+    const adapter = memoryAdapter({ docs: slugSeed() })
+    const config = slugResource()
+
+    // View resolves the row rather than falling through to the list
+    const viewState = (await run(config, '/admin/things?action=view&id=alpha-doc', { adapter }) as { state: CmsState }).state
+    expect(viewState.mode).toBe('view')
+    if (viewState.mode !== 'view') return
+    expect(viewState.id).toBe('alpha-doc')
+
+    // Edit prefills from the DB
+    const formState = (await run(config, '/admin/things?action=edit&id=bravo-doc', { adapter }) as { state: CmsState }).state
+    expect(formState.mode).toBe('form')
+    if (formState.mode !== 'form') return
+    expect(formState.values.name).toBe('Bravo')
+
+    // Delete removes the right row
+    await run(config, '/admin/things?action=delete&id=alpha-doc', { adapter, method: 'POST' })
+    expect(await adapter.findOne('docs', 'slug', 'alpha-doc', ['slug'])).toBeNull()
+    expect(await adapter.findOne('docs', 'slug', 'bravo-doc', ['slug'])).not.toBeNull()
+  })
+
+  it('escapes ids in the default row action URLs', async () => {
+    const adapter = memoryAdapter({ docs: [{ ...slugSeed()[0], slug: 'a/b c' }] })
+    const state = listState(await run(slugResource(), '/admin/things', { adapter }))
+    const edit = state.actions.find((a) => a.label === 'Edit')!
+    expect('href' in edit && edit.href({ slug: 'a/b c' })).toBe('/admin/things?action=edit&id=a%2Fb%20c')
   })
 })
 

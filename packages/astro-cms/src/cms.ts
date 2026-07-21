@@ -1,5 +1,5 @@
 import type { FormConfig } from '@mattthehat/astro-forms/server'
-import type { CmsField, CmsFieldMap, ColumnFormat, ColumnConfig } from './types'
+import type { CmsField, CmsFieldMap, CmsRow, ColumnFormat, ColumnConfig } from './types'
 import type { Column, CellValue, CellContent, Decorator } from './components/types'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -41,10 +41,29 @@ const buildDecorator = (col: ColumnConfig): Decorator => {
 
 const listConfig = (field: CmsField): ColumnConfig => (typeof field.list === 'object' ? field.list : {})
 
-/** Derives Table columns from the fields marked with `list`. Heading falls back to the field label. */
-export const tableColumns = (fields: CmsFieldMap): Column[] =>
+/** Every field that can appear as a list column, in config order */
+export const listableColumns = (fields: CmsFieldMap): { key: string; label: string; hidden: boolean }[] =>
   Object.entries(fields)
     .filter(([, field]) => field.list)
+    .map(([key, field]) => ({
+      key,
+      label: listConfig(field).label ?? field.label ?? key,
+      hidden: field.hidden === true,
+    }))
+
+/** The columns shown when the user has not chosen a set — everything not marked `hidden` */
+export const defaultVisibleColumns = (fields: CmsFieldMap): string[] =>
+  listableColumns(fields).filter((c) => !c.hidden).map((c) => c.key)
+
+/**
+ * Derives Table columns from the fields marked with `list`. Heading falls back
+ * to the field label. Pass `visible` to restrict (and it alone decides
+ * visibility — `hidden` only supplies the default set).
+ */
+export const tableColumns = (fields: CmsFieldMap, visible?: Iterable<string>): Column[] => {
+  const shown = visible ? new Set(visible) : null
+  return Object.entries(fields)
+    .filter(([key, field]) => field.list && (shown ? shown.has(key) : field.hidden !== true))
     .map(([key, field]) => {
       const col = listConfig(field)
       return {
@@ -56,6 +75,7 @@ export const tableColumns = (fields: CmsFieldMap): Column[] =>
         sortable: field.sort ?? false,
       }
     })
+}
 
 // ── Form ⇄ row mapping ───────────────────────────────────────────────────────
 
@@ -148,10 +168,48 @@ export const viewItemsFor = (row: Record<string, unknown>, fields: CmsFieldMap):
     .filter(([, f]) => f.view !== false)
     .map(([key, f]) => ({ key, label: f.label ?? key, value: displayValue(row[key], f) }))
 
-/** DB columns to SELECT: id plus every non-virtual field */
+/** DB columns to SELECT: id plus every field backed by a real column */
 export const selectColumns = (fields: CmsFieldMap, idColumn: string): string[] => [
-  ...new Set([idColumn, ...Object.keys(fields).filter((k) => !fields[k].virtual)]),
+  ...new Set([idColumn, ...Object.keys(fields).filter((k) => !fields[k].virtual && !fields[k].compute)]),
 ]
+
+/**
+ * Fills in the `compute`d fields on a row. Runs after the adapter returns, so
+ * computed values can read every selected column — and so they reach the list,
+ * the view screen and the CSV export alike.
+ */
+export const applyComputed = (row: CmsRow, fields: CmsFieldMap): CmsRow => {
+  const computed = Object.entries(fields).filter(([, f]) => f.compute)
+  if (computed.length === 0) return row
+  const out = { ...row }
+  for (const [key, field] of computed) out[key] = field.compute!(row)
+  return out
+}
+
+// ── CSV export ───────────────────────────────────────────────────────────────
+
+/** Escapes one CSV cell: quote it when it contains a delimiter, quote or newline */
+const csvCell = (value: unknown): string => {
+  if (value === null || value === undefined) return ''
+  const s = value instanceof Date ? value.toISOString() : String(value)
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+/** The fields included in an export: everything listed, minus `export: false` */
+export const exportColumns = (fields: CmsFieldMap): { key: string; label: string }[] =>
+  Object.entries(fields)
+    .filter(([, f]) => f.list && f.export !== false)
+    .map(([key, f]) => ({ key, label: listConfig(f).label ?? f.label ?? key }))
+
+/**
+ * Renders rows as CSV. Values are the raw row values, not the decorated cell
+ * content — an export is for spreadsheets, not for reading back the table.
+ */
+export const toCsv = (rows: CmsRow[], columns: { key: string; label: string }[]): string => {
+  const lines = [columns.map((c) => csvCell(c.label)).join(',')]
+  for (const row of rows) lines.push(columns.map((c) => csvCell(row[c.key])).join(','))
+  return lines.join('\r\n')
+}
 
 export const searchableColumns = (fields: CmsFieldMap): string[] =>
   Object.entries(fields).filter(([, f]) => f.search).map(([k]) => k)

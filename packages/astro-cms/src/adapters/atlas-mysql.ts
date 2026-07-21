@@ -60,6 +60,18 @@ export const buildListWhere = (q: ListQuery): { where: string[]; values: DbValue
 }
 
 /**
+ * The ORDER BY terms for a list query. Prefers the full `order`, falling back
+ * to the single `sort` and finally to the id column so paging stays stable.
+ */
+const orderFor = (q: ListQuery): { column: string; direction: 'ASC' | 'DESC' }[] => {
+  const terms = q.order?.length ? q.order : q.sort ? [q.sort] : [{ column: q.idColumn, dir: 'asc' as const }]
+  return terms.map((t) => ({ column: t.column, direction: t.dir === 'desc' ? 'DESC' : 'ASC' }))
+}
+
+/** MySQL identifier quoting, for the one place we build SQL outside atlas */
+const escapeIdent = (name: string): string => `\`${name.replace(/`/g, '``')}\``
+
+/**
  * Turns MySQL constraint errors into friendly messages. Duplicate-key errors
  * are matched against fields with `rules.unique` so the message lands on the
  * right input instead of a generic banner.
@@ -99,8 +111,8 @@ export const atlasAdapter = (orm: MySQLORM): CmsAdapter => ({
         idField: q.idColumn,
         fields: fieldsFor(q.columns),
         where,
-        orderBy: q.sort?.column ?? q.idColumn,
-        orderDirection: q.sort?.dir === 'desc' ? 'DESC' : 'ASC',
+        // atlas escapes these identifiers and applies each direction in turn
+        orderBy: orderFor(q),
         limit: q.limit,
         offset: q.offset,
       },
@@ -128,6 +140,17 @@ export const atlasAdapter = (orm: MySQLORM): CmsAdapter => ({
 
   async remove(table, idColumn, id) {
     await orm.deleteData(table, { [idColumn]: id })
+  },
+
+  async removeMany(table, idColumn, ids) {
+    if (ids.length === 0) return
+    // deleteData only takes equality pairs, so this one statement is built here.
+    // Identifiers come from resource config and are quoted; ids are bound.
+    const placeholders = ids.map(() => '?').join(', ')
+    await orm.rawQuery(
+      `DELETE FROM ${escapeIdent(table)} WHERE ${escapeIdent(idColumn)} IN (${placeholders})`,
+      ids as DbValue[]
+    )
   },
 
   mapError: mapMysqlError,

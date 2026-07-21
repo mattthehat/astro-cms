@@ -1,0 +1,113 @@
+---
+import Icon from './icons/Icon.astro';
+
+type Props = {
+  url: URL;
+  basePath: string;
+  perPage: number;
+  perPageOptions: number[];
+  allColumns: { key: string; label: string; hidden: boolean }[];
+  visibleColumns: string[];
+  csv: boolean;
+  softDelete: boolean;
+  trash: boolean;
+};
+
+const { url, basePath, perPage, perPageOptions, allColumns, visibleColumns, csv, softDelete, trash } = Astro.props;
+
+// This form controls page size and columns, so it owns those params; everything
+// else (search, filters, sort, trash) rides along as hidden inputs to survive
+// the GET. Paging resets because the page you were on may no longer exist.
+const CONTROLLED = ['perPage', 'cols', 'page', 'action', 'id'];
+const carried = [...url.searchParams.entries()].filter(([key]) => !CONTROLLED.includes(key));
+
+const link = (changes: Record<string, string | null>): string => {
+  const next = new URL(url);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) next.searchParams.delete(key);
+    else next.searchParams.set(key, value);
+  }
+  next.searchParams.delete('page');
+  return next.pathname + next.search;
+};
+
+const showPerPage = perPageOptions.length > 0;
+const showColumns = allColumns.length > 1;
+const hasForm = showPerPage || showColumns;
+---
+
+{(hasForm || csv || softDelete) && (
+  <div class="ac-controls">
+    {softDelete && (
+      <div class="ac-controls__toggle" role="group" aria-label="Show active or deleted rows">
+        <a class:list={['ac-controls__tab', { 'ac-controls__tab--active': !trash }]} href={link({ trash: null })}>Active</a>
+        <a class:list={['ac-controls__tab', { 'ac-controls__tab--active': trash }]} href={link({ trash: '1' })}>Deleted</a>
+      </div>
+    )}
+
+    {hasForm && (
+      <form class="ac-controls__form" method="get" action={basePath} data-ac-controls>
+        {carried.map(([key, value]) => <input type="hidden" name={key} value={value} />)}
+
+        {showColumns && (
+          <details class="ac-controls__menu">
+            <summary class="ac-controls__button">
+              <Icon name="columns-3" size={14} aria-hidden="true" />
+              Columns
+              <Icon name="chevron-down" size={14} aria-hidden="true" />
+            </summary>
+            <div class="ac-controls__panel">
+              {allColumns.map(column => (
+                <label class="ac-controls__option">
+                  <input
+                    type="checkbox"
+                    class="ac-check"
+                    name="cols"
+                    value={column.key}
+                    checked={visibleColumns.includes(column.key)}
+                  />
+                  {column.label}
+                </label>
+              ))}
+              <button type="submit" class="ac-controls__apply">Apply</button>
+            </div>
+          </details>
+        )}
+
+        {showPerPage && (
+          <label class="ac-controls__perpage">
+            <span class="ac-sr-only">Rows per page</span>
+            <select name="perPage" class="ac-controls__select">
+              {perPageOptions.map(option => (
+                <option value={option} selected={option === perPage}>{option} per page</option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* Hidden once JS can auto-submit on change */}
+        <button type="submit" class="ac-controls__button" data-ac-controls-go>Apply</button>
+      </form>
+    )}
+
+    {csv && (
+      <a class="ac-controls__button" href={link({ action: 'export' })} download>
+        <Icon name="download" size={14} aria-hidden="true" />
+        Export CSV
+      </a>
+    )}
+  </div>
+)}
+
+<script is:inline>
+  (function () {
+    document.querySelectorAll('[data-ac-controls]').forEach(function (form) {
+      var go = form.querySelector('[data-ac-controls-go]');
+      // The page-size select can submit itself; columns keep their Apply button
+      // because you usually tick several boxes before you want a reload.
+      var select = form.querySelector('select[name="perPage"]');
+      if (select) select.addEventListener('change', function () { form.submit(); });
+      if (go && select && !form.querySelector('input[name="cols"]')) go.hidden = true;
+    });
+  })();
+</script>

@@ -2,6 +2,7 @@
 import Icon from './icons/Icon.astro';
 import Cell from './Cell.astro';
 import type { Column, RowAction, CellValue } from './types';
+import type { SortSpec } from '../types';
 
 type Props = {
   columns: Column[];
@@ -11,21 +12,36 @@ type Props = {
   actions?: RowAction[];
   /** Current URL — sortable headers build links that preserve other params */
   url?: URL;
-  /** Active sort, used to show direction and toggle */
-  sort?: { column: string; dir: 'asc' | 'desc' };
+  /** Active ordering, most significant first */
+  order?: SortSpec[];
+  /**
+   * Render a leading checkbox column whose inputs belong to the form with this
+   * id. That form lives outside the table, so the per-row action forms are
+   * never nested inside it.
+   */
+  selectionForm?: string;
+  /** Column holding each row's id — the value submitted for a selected row */
+  idColumn?: string;
 };
 
-const { columns, rows, caption, emptyMessage = 'Nothing to show yet.', actions = [], url, sort } = Astro.props;
+const {
+  columns, rows, caption, emptyMessage = 'Nothing to show yet.', actions = [],
+  url, order = [], selectionForm, idColumn = 'id',
+} = Astro.props;
 
 const EMPTY = '—';
+const selectable = Boolean(selectionForm);
+
+const positionOf = (column: string) => order.findIndex(o => o.column === column);
 
 // Sort link for a column header — toggles direction, resets to page 1, keeps
-// every other query param (search, filters)
+// every other query param (search, filters). Shift-clicking is handled by the
+// script below, which appends a column instead of replacing the ordering.
 const sortHref = (column: string, dir: 'asc' | 'desc'): string => {
   if (!url) return '#';
   const next = new URL(url);
-  next.searchParams.set('sort', column);
-  next.searchParams.set('dir', dir);
+  next.searchParams.set('sort', `${column}:${dir}`);
+  next.searchParams.delete('dir');
   next.searchParams.delete('page');
   return next.pathname + next.search;
 };
@@ -56,26 +72,42 @@ const columnAlign = (col: Column): Column['align'] => {
   return allIconOrEmpty ? 'centre' : undefined;
 };
 const aligns = new Map(columns.map(col => [col.key, columnAlign(col)]));
+
+const totalCols = columns.length + (actions.length ? 1 : 0) + (selectable ? 1 : 0);
 ---
 
 <div class="ac-table-wrap">
-  <table class="ac-table">
+  <table class="ac-table" data-ac-order={JSON.stringify(order)}>
     {caption ? <caption class="ac-table__caption">{caption}</caption> : null}
     <thead>
       <tr>
+        {selectable ? (
+          <th scope="col" class="ac-table__th ac-table__cell--centre ac-table__select">
+            <input type="checkbox" class="ac-check" data-ac-select-all aria-label="Select all rows on this page" />
+          </th>
+        ) : null}
         {columns.map(col => {
           const align = aligns.get(col.key);
           const cls = `ac-table__th${align ? ` ac-table__cell--${align}` : ''}`;
           if (col.sortable && url) {
-            const active = sort?.column === col.key;
-            const nextDir = active && sort?.dir === 'asc' ? 'desc' : 'asc';
+            const pos = positionOf(col.key);
+            const active = pos !== -1;
+            const dir = active ? order[pos].dir : null;
+            const nextDir = dir === 'asc' ? 'desc' : 'asc';
             return (
-              <th scope="col" class={cls} aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                <a class:list={['ac-table__sort', { 'ac-table__sort--active': active }]} href={sortHref(col.key, nextDir)}>
+              <th scope="col" class={cls} aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <a
+                  class:list={['ac-table__sort', { 'ac-table__sort--active': active }]}
+                  href={sortHref(col.key, nextDir)}
+                  data-ac-sort={col.key}
+                  data-ac-dir={nextDir}
+                  title="Shift-click to sort by more than one column"
+                >
                   {col.label}
                   {active
-                    ? <Icon name={sort!.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={13} aria-hidden="true" />
+                    ? <Icon name={dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={13} aria-hidden="true" />
                     : <Icon name="chevrons-up-down" size={13} aria-hidden="true" class="ac-table__sort-idle" />}
+                  {active && order.length > 1 ? <span class="ac-table__sort-pos">{pos + 1}</span> : null}
                 </a>
               </th>
             );
@@ -88,11 +120,24 @@ const aligns = new Map(columns.map(col => [col.key, columnAlign(col)]));
     <tbody>
       {rows.length === 0 ? (
         <tr>
-          <td class="ac-table__td ac-table__td--empty" colspan={columns.length + (actions.length ? 1 : 0)}>{emptyMessage}</td>
+          <td class="ac-table__td ac-table__td--empty" colspan={totalCols}>{emptyMessage}</td>
         </tr>
       ) : null}
       {rows.map(row => (
         <tr class="ac-table__row">
+          {selectable ? (
+            <td class="ac-table__td ac-table__cell--centre ac-table__select">
+              <input
+                type="checkbox"
+                class="ac-check"
+                form={selectionForm}
+                name="ids"
+                value={String(row[idColumn])}
+                data-ac-select
+                aria-label={`Select row ${row[idColumn]}`}
+              />
+            </td>
+          ) : null}
           {columns.map(col => {
             const align = aligns.get(col.key);
             return <td class={`ac-table__td${align ? ` ac-table__cell--${align}` : ''}`}><Cell content={cell(col, row)} /></td>;
@@ -126,3 +171,53 @@ const aligns = new Map(columns.map(col => [col.key, columnAlign(col)]));
     </tbody>
   </table>
 </div>
+
+{/* Selection and shift-click sorting. Without JS the plain sort links still
+    work (one column at a time) and the checkboxes still submit. */}
+<script is:inline>
+  (function () {
+    var wrap = document.currentScript.previousElementSibling;
+    var table = wrap && wrap.querySelector('table[data-ac-order]');
+    if (!table) return;
+
+    var order = [];
+    try { order = JSON.parse(table.getAttribute('data-ac-order') || '[]'); } catch (e) { order = []; }
+
+    table.addEventListener('click', function (e) {
+      if (!e.shiftKey) return;
+      var link = e.target.closest('a[data-ac-sort]');
+      if (!link) return;
+      e.preventDefault();
+
+      var column = link.getAttribute('data-ac-sort');
+      var dir = link.getAttribute('data-ac-dir') || 'asc';
+      // Re-clicking a column moves it to the end with its new direction
+      var next = order.filter(function (o) { return o.column !== column; });
+      next.push({ column: column, dir: dir });
+
+      var url = new URL(link.href, window.location.origin);
+      url.searchParams.set('sort', next.map(function (o) { return o.column + ':' + o.dir; }).join(','));
+      url.searchParams.delete('page');
+      window.location.href = url.pathname + url.search;
+    });
+
+    var all = table.querySelector('[data-ac-select-all]');
+    if (!all) return;
+    var boxes = [].slice.call(table.querySelectorAll('[data-ac-select]'));
+
+    var sync = function () {
+      var checked = boxes.filter(function (b) { return b.checked; }).length;
+      all.checked = checked > 0 && checked === boxes.length;
+      all.indeterminate = checked > 0 && checked < boxes.length;
+      // The bulk bar listens for this to show the count and enable its buttons
+      table.dispatchEvent(new CustomEvent('ac:selection', { bubbles: true, detail: { count: checked } }));
+    };
+
+    all.addEventListener('change', function () {
+      boxes.forEach(function (b) { b.checked = all.checked; });
+      sync();
+    });
+    boxes.forEach(function (b) { b.addEventListener('change', sync); });
+    sync();
+  })();
+</script>

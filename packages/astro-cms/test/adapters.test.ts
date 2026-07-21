@@ -68,6 +68,36 @@ const contract = (name: string, makeAdapter: () => Promise<CmsAdapter> | CmsAdap
       expect(res.rows.map((r) => r.score)).toEqual([2])
     })
 
+    it('findMany: orders by every term in `order`, most significant first', async () => {
+      const adapter = await makeAdapter()
+      const { rows } = await adapter.findMany({
+        ...base,
+        order: [{ column: 'active', dir: 'desc' }, { column: 'score', dir: 'asc' }],
+      })
+      // active=1 first (score 2 then 5), then active=0
+      expect(rows.map((r) => r.id)).toEqual([3, 1, 2])
+    })
+
+    it('findMany: falls back to `sort` when no `order` is given', async () => {
+      const adapter = await makeAdapter()
+      const { rows } = await adapter.findMany({ ...base, sort: { column: 'score', dir: 'desc' } })
+      expect(rows.map((r) => r.score)).toEqual([9, 5, 2])
+    })
+
+    it('removeMany deletes exactly the given ids, if implemented', async () => {
+      const adapter = await makeAdapter()
+      if (!adapter.removeMany) return
+
+      await adapter.removeMany('items', 'id', [1, 3])
+      const { rows, total } = await adapter.findMany(base)
+      expect(rows.map((r) => r.id)).toEqual([2])
+      expect(total).toBe(1)
+
+      // Deleting nothing is a no-op, not an error or a full wipe
+      await adapter.removeMany('items', 'id', [])
+      expect((await adapter.findMany(base)).total).toBe(1)
+    })
+
     it('mapError always yields something renderable', async () => {
       const adapter = await makeAdapter()
       const mapped = adapter.mapError(new Error('boom'), {})

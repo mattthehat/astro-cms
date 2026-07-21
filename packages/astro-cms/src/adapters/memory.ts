@@ -80,10 +80,16 @@ export const memoryAdapter = (seed: MemorySeed = {}): CmsAdapter => {
         )
       }
 
-      if (q.sort) {
-        const { column, dir } = q.sort
-        const sign = dir === 'desc' ? -1 : 1
-        rows = [...rows].sort((a, b) => sign * compare(a[column], b[column]))
+      // `order` is the full ordering; `sort` is the legacy single-column form
+      const order = q.order?.length ? q.order : q.sort ? [q.sort] : []
+      if (order.length > 0) {
+        rows = [...rows].sort((a, b) => {
+          for (const { column, dir } of order) {
+            const result = compare(a[column], b[column])
+            if (result !== 0) return dir === 'desc' ? -result : result
+          }
+          return 0
+        })
       }
 
       const total = rows.length
@@ -119,6 +125,15 @@ export const memoryAdapter = (seed: MemorySeed = {}): CmsAdapter => {
       const rows = rowsFor(table)
       const i = findIndex(rows, idColumn, id)
       if (i !== -1) rows.splice(i, 1)
+    },
+
+    async removeMany(table, idColumn, ids) {
+      const wanted = new Set(ids.map(String))
+      const rows = rowsFor(table)
+      // Back to front so the splices don't shift indices we still need
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (wanted.has(String(rows[i][idColumn]))) rows.splice(i, 1)
+      }
     },
 
     mapError(err) {

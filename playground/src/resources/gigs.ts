@@ -7,6 +7,11 @@ export const gigs = defineResource({
   singular: 'gig',
   defaultSort: { column: 'date', dir: 'asc' },
   perPage: 5,
+  perPageOptions: [5, 10, 25],
+  csv: true,
+  softDelete: { column: 'deleted_at' },
+  timestamps: { updated: 'updated_at' },
+  concurrency: { column: 'updated_at' },
   fields: {
     artist: {
       label: 'Artist',
@@ -61,6 +66,14 @@ export const gigs = defineResource({
       type: 'textarea',
       rows: 3,
     },
+    // Derived from the row rather than stored — never selected or persisted
+    billing: {
+      label: 'Billing',
+      list: true,
+      hidden: true,
+      compute: (row) => `${row.artist} — ${row.venue}, ${row.city}`,
+    },
+    updated_at: { label: 'Updated', add: false, edit: false, view: false },
   },
   filters: [
     {

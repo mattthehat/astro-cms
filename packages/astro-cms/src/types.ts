@@ -37,6 +37,16 @@ export type CmsField = FieldConfig & {
   search?: boolean
   /** Column header renders as a sort toggle */
   sort?: boolean
+  /**
+   * Derive this column's value from the whole row instead of reading it from
+   * the DB. Implies `virtual` — nothing is selected or persisted for it — so
+   * it is how a virtual field earns a place in the list table or view screen.
+   */
+  compute?: (row: CmsRow) => unknown
+  /** Hide this column from the list by default; users re-show it via the column picker */
+  hidden?: boolean
+  /** Exclude from the CSV export even when listed */
+  export?: boolean
 }
 
 export type CmsFieldMap = Record<string, CmsField>
@@ -59,6 +69,9 @@ export type FilterState =
   | { type: 'select'; column: string; value: string }
   | { type: 'nonempty'; column: string; state: 'set' | 'unset' }
 
+/** One ordering term */
+export type SortSpec = { column: string; dir: 'asc' | 'desc' }
+
 /** Everything an adapter needs to produce one page of list results */
 export type ListQuery = {
   table: string
@@ -68,7 +81,14 @@ export type ListQuery = {
   /** Free-text search over these columns (already trimmed, non-empty) */
   search?: { columns: string[]; term: string }
   filters: FilterState[]
-  sort?: { column: string; dir: 'asc' | 'desc' }
+  /**
+   * The primary ordering. Always mirrors `order[0]`, so an adapter written
+   * before multi-column sort existed keeps working — it just sorts by the
+   * most significant column only.
+   */
+  sort?: SortSpec
+  /** The full ordering, most significant first. Prefer this over `sort`. */
+  order?: SortSpec[]
   limit: number
   offset: number
 }
@@ -90,6 +110,12 @@ export interface CmsAdapter {
   create(table: string, data: CmsRow): Promise<CmsId>
   update(table: string, idColumn: string, id: CmsId, data: CmsRow): Promise<void>
   remove(table: string, idColumn: string, id: CmsId): Promise<void>
+  /**
+   * Optional bulk delete. Implement it to remove a selection in one statement;
+   * without it the engine falls back to `remove` per id, which is correct but
+   * issues one query each.
+   */
+  removeMany?(table: string, idColumn: string, ids: CmsId[]): Promise<void>
   /** Turn a thrown persistence error into friendly field/form errors */
   mapError(err: unknown, fields: CmsFieldMap): MappedError
 }
