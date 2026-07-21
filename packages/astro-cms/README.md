@@ -107,6 +107,9 @@ rules, options, widths…) plus flags that drive the admin screens:
 | `add` / `edit` | Include on the create / edit form. Default `true`. |
 | `view` | Include on the detail screen. Default `true`. |
 | `virtual` | Not a database column — excluded from SELECTs and persisted rows. |
+| `compute` | Derive the value from the row after the read. Implies `virtual`. |
+| `hidden` | Listed, but off by default — users switch it on in the column picker. |
+| `export` | Set `false` to keep a listed column out of the CSV export. |
 
 Everything astro-forms supports works here: validation rules produce inline errors
 with repopulated values, `type: 'file'` switches the form to multipart, custom field
@@ -130,6 +133,47 @@ owner:  { label: 'Owner', list: { decorate: (value, row) => ({ text: String(valu
 - `decorate(value, row)` — full control; return a string or a
   `CellContent` (`{ text, pill, icon, iconVariant, prefix, suffix, label }`).
 - `label` — override the column heading (defaults to the field label).
+
+### Computed columns
+
+`compute` derives a value from the row once it has been read. The field is never
+selected from the database and never persisted, so it is how a virtual field earns
+a place in the table, the detail screen and the CSV export:
+
+```ts
+billing: {
+  label: 'Billing',
+  list: true,
+  compute: (row) => `${row.artist} — ${row.venue}, ${row.city}`,
+},
+```
+
+### Sorting
+
+Clicking a `sort: true` header orders by that column; **shift-clicking** adds a
+column to the ordering rather than replacing it, and each active header shows its
+rank. The state lives in the query string as `?sort=city:asc,price:desc`, so a
+sorted view is shareable. The older `?sort=city&dir=asc` form still works.
+
+Adapters receive the full ordering as `order`, with `order[0]` mirrored into `sort`
+so an adapter written before multi-column sort keeps working.
+
+### Page size, columns and export
+
+```ts
+perPageOptions: [10, 25, 50],   // renders a page-size picker
+csv: true,                      // or { filename: 'gigs.csv', maxRows: 5000 }
+```
+
+`?perPage=` only accepts a value from `perPageOptions`, so the query string cannot
+ask for an unbounded page. The column picker writes `?cols=`, and the CSV export
+covers every row matching the current search, filters and ordering — not just the
+page on screen. Enabling `csv` means `runCmsResource` can return a `Response`:
+
+```ts
+if ('redirect' in result) return Astro.redirect(result.redirect);
+if ('response' in result) return result.response;
+```
 
 ## Filters
 
@@ -186,6 +230,7 @@ a `switch` field arrives as `boolean`, a multi-`select` as `string[]`.
 ```ts
 canCreate: (ctx) => ctx.user?.role === 'admin',
 canEdit: (ctx) => ctx.user?.role === 'admin',
+canDelete: (ctx) => ctx.user?.role === 'admin',
 rowActions: (ctx) => [
   { label: 'View', icon: 'lucide:eye', href: (row) => `/admin/gigs?action=view&id=${row.id}` },
   ...(ctx.user?.role === 'admin' ? defaultRowActions : []),
@@ -196,9 +241,83 @@ rowActions: (ctx) => [
 server-side. `canEdit` does the same for editing: when it returns false the Edit
 row action and the view screen's Edit CTA are hidden, and the edit form/POST is
 blocked server-side — set `canEdit: () => false` for a read-only resource.
+`canDelete` hides the Delete row action and rejects the delete POST before the
+adapter is touched. Each gate is enforced server-side, not just in the UI, so a
+hand-crafted POST is refused too.
+
 `rowActions` replaces the default Edit/Delete pair; entries are links
 (`href`) or POST forms (`formAction`, with optional `confirm`), and `show(row)`
-hides an action per row.
+hides an action per row. Note that a custom `rowActions` takes over completely —
+it is not filtered by the gates, so apply them yourself as in the example above.
+
+### Bulk actions
+
+Selection checkboxes appear as soon as there is a bulk action to run. By default
+that is a single Delete, offered whenever `canDelete` allows it. Replace the set to
+add your own, and handle them in `hooks.bulk`:
+
+```ts
+bulkActions: () => [
+  { key: 'delete', label: 'Delete selected', icon: 'lucide:trash-2', variant: 'danger',
+    confirm: 'Delete {n} gigs? This cannot be undone.' },
+  { key: 'publish', label: 'Publish', variant: 'primary' },
+],
+hooks: {
+  bulk: {
+    publish: async (ids, ctx) => {
+      await publishAll(ids);
+      ctx.flash([{ variant: 'success', message: `${ids.length} published.` }]);
+    },
+  },
+},
+```
+
+Return `[]` from `bulkActions` to turn selection off entirely. `{n}` in a `confirm`
+is replaced with the number selected. The `delete` key is handled for you unless
+you define it in `hooks.bulk`. Bulk delete uses the adapter's optional `removeMany`
+when it has one, and otherwise falls back to one `remove` per id.
+
+### Soft delete
+
+```ts
+softDelete: { column: 'deleted_at' },
+```
+
+Deleting then stamps that column instead of issuing a DELETE. Those rows drop out
+of the list, and a Deleted tab appears where they can be restored — or removed for
+real. A soft-deleted row is treated as missing if someone reaches its view or edit
+URL directly.
+
+This rides on the existing `nonempty` filter rather than a new adapter concept, so
+every adapter that implements `CmsAdapter` supports it without changes.
+
+### Timestamps and concurrency
+
+```ts
+timestamps: { created: 'created_at', updated: 'updated_at' },
+concurrency: { column: 'updated_at' },
+```
+
+`timestamps` stamps both columns on insert and `updated` on every edit.
+`concurrency` guards against two people editing the same row: the edit form carries
+the row's current version, and a save is refused if the row changed in the
+meantime. The user gets their input back with an explanation and a fresh token
+rather than silently overwriting the other person's work. Any column that changes
+on write does the job — an `updated_at` timestamp or an integer version counter.
+
+### Cross-site request forgery
+
+Every mutation is a same-origin form POST to an on-demand rendered page, which
+Astro's built-in `security.checkOrigin` already rejects when it comes from
+another origin. That defaults to `true`, so there is nothing to configure and
+this package adds no token of its own. If you have turned it off globally, turn
+it back on for your admin routes.
+
+### Identifiers
+
+`idColumn` need not be an integer. Digit-only ids are passed to the adapter as
+numbers; anything else — UUIDs, slugs — is passed through as a string and
+escaped into the action URLs.
 
 ## Adapters
 
@@ -252,10 +371,16 @@ before the schema exists. State lives for the adapter instance's lifetime.
 
 ### Writing your own
 
-Implement the six methods for your backend (Postgres, SQLite, an HTTP API…) and
-pass the instance to `runCmsResource`. The adapter contract test in
+Implement the six required methods for your backend (Postgres, SQLite, an HTTP
+API…) and pass the instance to `runCmsResource`. The adapter contract test in
 `packages/astro-cms/test/adapters.test.ts` shows the exact expected behaviour —
 point it at your adapter to check it.
+
+`removeMany` is optional: implement it to delete a selection in one statement,
+or leave it out and the engine issues one `remove` per id instead.
+
+In `findMany`, prefer `q.order` (the full ordering, most significant first) over
+`q.sort` (its first term, kept so older adapters still work).
 
 ## Theming
 

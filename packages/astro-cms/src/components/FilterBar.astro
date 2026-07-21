@@ -22,9 +22,24 @@ const filterCount = filters.filter((f) =>
 const panelOpen = filterCount > 0;
 const anyActive = hasActiveFilters(params, searchColumns, filters);
 const hasFilters = filters.length > 0;
+
+// This form owns the search box and the filter controls, and submitting it
+// replaces the whole query string. Anything it does not own — the chosen
+// columns, page size, ordering — has to ride along or it would be lost on every
+// search. `page` is deliberately dropped: a new filter means a new page 1.
+const owned = new Set([
+  'q', 'page', 'action', 'id',
+  ...filters.flatMap(f => (f.type === 'dateRange' ? [`${f.key}_from`, `${f.key}_to`] : [f.key])),
+]);
+const carried = [...params.entries()].filter(([key]) => !owned.has(key));
+
+// "Clear all" clears the search and filters, not the view you set up around them
+const clearQuery = new URLSearchParams(carried).toString();
+const clearHref = clearQuery ? `${basePath}?${clearQuery}` : basePath;
 ---
 
 <form class="ac-toolbar" method="get" action={basePath} role="search">
+  {carried.map(([key, value]) => <input type="hidden" name={key} value={value} />)}
   <div class="ac-toolbar__bar">
     {showSearch ? (
       <div class="ac-toolbar__search">
@@ -55,7 +70,7 @@ const hasFilters = filters.length > 0;
       </button>
     ) : null}
 
-    {anyActive ? <a href={basePath} class="ac-toolbar__clear">Clear all</a> : null}
+    {anyActive ? <a href={clearHref} class="ac-toolbar__clear">Clear all</a> : null}
 
     <div class="ac-toolbar__actions"><slot name="actions" /></div>
   </div>

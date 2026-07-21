@@ -244,11 +244,17 @@ const parsePerPage = (params: URLSearchParams, options: number[], fallback: numb
   return options.includes(requested) ? requested : fallback
 }
 
-/** Visible column keys from `?cols=`, intersected with what's actually listable */
+/**
+ * Visible column keys from `?cols=`, intersected with what's actually listable.
+ * Accepts both the comma form (`?cols=a,b`, which is what a shared link looks
+ * like) and the repeated form (`?cols=a&cols=b`), which is what the column
+ * picker's checkbox group actually submits.
+ */
 const parseColumns = (params: URLSearchParams, listable: string[], fallback: string[]): string[] => {
-  const raw = params.get('cols')
-  if (raw === null) return fallback
-  const chosen = raw.split(',').map((c) => c.trim()).filter((c) => listable.includes(c))
+  const raw = params.getAll('cols')
+  if (raw.length === 0) return fallback
+  const chosen = [...new Set(raw.flatMap((value) => value.split(',')).map((c) => c.trim()))]
+    .filter((c) => listable.includes(c))
   // An empty or entirely bogus selection would render a table with no columns
   return chosen.length > 0 ? chosen : fallback
 }

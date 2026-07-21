@@ -199,6 +199,15 @@ describe('column visibility', () => {
     const chosen = listState(await run(config, '/admin/things?cols=city,likes', { adapter }))
     expect(chosen.columns.map((c) => c.key)).toEqual(['city', 'likes'])
 
+    // The picker is a checkbox group, so it submits one `cols` param per column
+    // rather than a comma-joined one — both forms have to work
+    const repeated = listState(await run(config, '/admin/things?cols=city&cols=likes', { adapter }))
+    expect(repeated.columns.map((c) => c.key)).toEqual(['city', 'likes'])
+
+    // Columns come out in config order, not the order they appear in the URL
+    const reversed = listState(await run(config, '/admin/things?cols=likes&cols=city', { adapter }))
+    expect(reversed.columns.map((c) => c.key)).toEqual(['city', 'likes'])
+
     // An entirely bogus selection would leave a table with no columns
     const bogus = listState(await run(config, '/admin/things?cols=nope', { adapter }))
     expect(bogus.columns.map((c) => c.key)).toEqual(byDefault.columns.map((c) => c.key))
