@@ -9,7 +9,7 @@
   "dependencies": {
     "@astrojs/node": "^10.1.4",
     "@mattthehat/astro-cms": "workspace:*",
-    "@mattthehat/astro-forms": "^0.2.0",
+    "@mattthehat/astro-forms": "^0.2.1",
     "astro": "^6.4.5"
   }
 }

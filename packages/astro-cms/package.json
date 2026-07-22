@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@mattthehat/astro-forms": "^0.2.0",
+    "@mattthehat/astro-forms": "^0.2.1",
     "astro": "^6.4.5",
     "atlas-mysql": "^4.1.1",
     "linkedom": "^0.18.13",
