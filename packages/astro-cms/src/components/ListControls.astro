@@ -109,5 +109,31 @@ const hasForm = showPerPage || showColumns;
       if (select) select.addEventListener('change', function () { form.submit(); });
       if (go && select && !form.querySelector('input[name="cols"]')) go.hidden = true;
     });
+
+    // Dismiss an open dropdown on an outside click or Escape. Bound once per
+    // document however many control bars are on the page.
+    if (window.__acMenuDismiss) return;
+    window.__acMenuDismiss = true;
+
+    var closeAll = function (except) {
+      document.querySelectorAll('details.ac-controls__menu[open]').forEach(function (menu) {
+        if (menu !== except) menu.open = false;
+      });
+    };
+
+    document.addEventListener('click', function (e) {
+      var menu = e.target.closest ? e.target.closest('details.ac-controls__menu') : null;
+      closeAll(menu);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var open = document.querySelector('details.ac-controls__menu[open]');
+      if (!open) return;
+      closeAll();
+      // Send focus back to the trigger so keyboard users keep their place
+      var summary = open.querySelector('summary');
+      if (summary) summary.focus();
+    });
   })();
 </script>

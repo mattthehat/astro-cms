@@ -1,6 +1,6 @@
-import { defineConfig } from 'vitest/config'
+import { getViteConfig } from 'astro/config'
 
-// The engine and adapters import astro-forms' server-only entry
-// (@mattthehat/astro-forms/server), so the tests pull in no .astro components
-// and need no Astro-specific Vite pipeline.
-export default defineConfig({})
+// The engine and adapter suites need no Astro pipeline, but the component suite
+// renders real .astro files through the container API, which does — so the
+// Astro Vite config is used for the whole run.
+export default getViteConfig({})

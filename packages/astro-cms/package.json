@@ -38,6 +38,7 @@
     "@mattthehat/astro-forms": "^0.2.0",
     "astro": "^6.4.5",
     "atlas-mysql": "^4.1.1",
+    "linkedom": "^0.18.13",
     "sass": "^1.101.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
